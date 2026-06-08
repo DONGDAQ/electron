@@ -52,6 +52,12 @@ def _run_captured(label: str, fn):
 
 
 if __name__ == "__main__":
+    try:
+        from smbclient import register_session
+        register_session("192.168.110.111", username="dong_daqian", password="dq46460055")
+    except Exception as e:
+        print(f"SMB 连接失败: {e}")
+
     from quote_system.auto_quote import run as run_huanta
     from quote_system.auto_quote_zhan_shuang import run as run_zhan_shuang
     from quote_system.auto_quote_zhan_shuang_feishu import run as run_zhan_shuang_feishu

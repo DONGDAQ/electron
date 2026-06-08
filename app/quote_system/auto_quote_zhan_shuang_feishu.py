@@ -309,9 +309,20 @@ def run() -> None:
 
     print(f"按返回日期分组: {', '.join(f'{label}月({len(items)}条)' for label, items in grouped_items.items())}")
 
-    # 处理每个双月组
+    # 只处理当前双月及之后的组，跳过已结算的历史月份
+    cur_m1, cur_m2, cur_label = get_bi_monthly_label(today)
+
+    def _bi_month_order(label: str) -> int:
+        m = int(label.split("＆")[0])
+        return m if m >= 2 else m + 12
+
+    cur_order = _bi_month_order(cur_label)
+
     total_processed = 0
     for bi_label, items in grouped_items.items():
+        if _bi_month_order(bi_label) < cur_order:
+            print(f"跳过已结算的{bi_label}月({len(items)}条)")
+            continue
         # 获取该组的报价单路径
         sample_date = datetime.strptime(items[0]['deliv_str'], "%Y-%m-%d").date()
         qpath = feishu_quote_path_for_date(sample_date)
