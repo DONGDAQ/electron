@@ -1,0 +1,3789 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>翻译报价系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ range(10000)|random }}">
+  <script src="{{ url_for('static', filename='lucide.min.js') }}"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div>
+          <h1>翻译报价系统</h1>
+        </div>
+      </div>
+
+      <nav class="project-nav" aria-label="项目">
+        {% for company, projects in projects_by_company.items() %}
+          <div class="company-group">
+            <div class="company-header" onclick="toggleSidebarCompany(this)">
+              <i data-lucide="chevron-down" class="company-chevron"></i>
+              <i data-lucide="building"></i>
+              <span>{{ company }}</span>
+            </div>
+            <div class="project-list">
+              {% for project in projects %}
+                <a
+                  class="project-link {% if project.key == selected_project.key %}active{% endif %}"
+                  href="{{ url_for('index', project=project.key) }}"
+                >
+                  <span>{{ project.display_name }}</span>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </nav>
+      
+      <details class="project-manager">
+        <summary>
+          <i data-lucide="settings"></i>
+          <span>项目管理</span>
+        </summary>
+        <div class="manager-content">
+          {% for company, projects in projects_by_company.items() %}
+            <div class="manager-company">
+              <input 
+                type="text" 
+                class="company-name-input" 
+                value="{{ company }}"
+                placeholder="公司名称"
+              >
+              <div class="manager-projects">
+                {% for project in projects %}
+                  <div class="manager-project-item" data-project-key="{{ project.key }}">
+                    <span class="drag-handle" draggable="true">
+                      <i data-lucide="grip-vertical"></i>
+                    </span>
+                    <input 
+                      type="text" 
+                      class="manager-project-name" 
+                      value="{{ project.display_name }}"
+                      placeholder="项目名称"
+                    >
+                    <input 
+                      type="number" 
+                      class="manager-sort-order" 
+                      value="{{ project.sort_order }}"
+                      placeholder="排序"
+                      min="1"
+                    >
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+          <button class="save-project-config-btn" id="saveProjectConfig">
+            <i data-lucide="save"></i>
+            保存配置
+          </button>
+        </div>
+      </details>
+      <div style="padding:8px;border-top:1px solid rgba(255,255,255,.06);margin-top:auto;">
+        <a class="project-link workspace-link" href="#" onclick="switchPage('quote-all');return false;" style="margin-bottom:4px;">
+          <i data-lucide="zap"></i>
+          一键报价
+        </a>
+        <a class="project-link workspace-link" href="#" onclick="switchPage('settlement-workbench');return false;" style="margin-bottom:4px;">
+          <i data-lucide="bar-chart-big"></i>
+          月度结算
+        </a>
+        <a class="project-link" href="{{ url_for('report_page') }}">
+          <i data-lucide="file-text"></i>
+          报价报告
+        </a>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div style="display:flex;align-items:center;gap:0;">
+          <button class="mode-tab active" id="quoteModeTab" onclick="switchMode('quote')"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>报价工作台</button>
+          <button class="mode-tab" id="settleModeTab" onclick="switchMode('settle')"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>结算工作台</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;" id="topbarActions">
+          <a class="ghost-button" href="{{ url_for('index', project=selected_project.key) }}">
+            <i data-lucide="refresh-cw"></i>
+            刷新
+          </a>
+          <button class="ghost-button" id="settingsBtn" onclick="openSettings()" title="设置存储路径">
+            <i data-lucide="settings"></i>
+          </button>
+          {% if selected_project.generator in ['tk_fill', 'fill_4399'] %}
+          <button class="ghost-button web-fill-btn" id="tkFillBtn" type="button" onclick="startFill()">
+            <i data-lucide="table-2"></i>
+            {{ 'TK 填表' if selected_project.generator == 'tk_fill' else '4399 填表' }}
+          </button>
+          {% endif %}
+          {% if selected_project.generator == 'huanta' %}
+          <button class="primary-button auto-quote-btn" id="autoQuoteBtn" onclick="runAutoQuote()">
+            <i data-lucide="bot"></i>
+            自动报价
+          </button>
+          {% endif %}
+          {% if selected_project.generator == 'zhan_shuang' %}
+          <button class="primary-button" id="zhanShuangMailBtn" onclick="runZhanShuangMailQuote()">
+            <i data-lucide="mail"></i>
+            邮件报价
+          </button>
+          {% endif %}
+          {% if selected_project.generator == 'zhan_shuang_feishu' %}
+          <button class="primary-button" id="zhanShuangFeishuBtn" onclick="runZhanShuangFeishuQuote()">
+            <i data-lucide="message-square"></i>
+            飞书报价
+          </button>
+          {% endif %}
+          {% if selected_project.generator == 'diezhi' %}
+          <button class="primary-button" id="diezhiQuoteBtn" onclick="runDiezhiQuote()">
+            <i data-lucide="bot"></i>
+            生成报价单
+          </button>
+          {% endif %}
+        </div>
+        <div style="display:none;align-items:center;gap:8px;" id="settleTopbarActions">
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="messages">
+            {% for category, message in messages %}
+              <div class="message {{ category }}">
+                <i data-lucide="{% if category == 'success' %}check-circle{% else %}alert-circle{% endif %}"></i>
+                <span>{{ message|safe }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="workspace-grid">
+        <div class="workspace-main">
+          <div class="panel form-panel"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>
+            {% if selected_project.generator in ['tk_fill', 'fill_4399'] %}
+            <div class="panel-heading">
+              <div>
+                <h3>{{ 'TK' if selected_project.generator == 'tk_fill' else '4399' }} 自动填表</h3>
+                <p>{{ 'API 方式下载 N 列 HTML → 解析 → 填写 O-Y 列' if selected_project.generator == 'tk_fill' else '下载 G 列 HTML 统计文件 → 解析 → 填写 K/L/M 列（亚洲字符数/总字符数/重复字符数）' }}</p>
+              </div>
+              <i data-lucide="table-2"></i>
+            </div>
+            <div style="display:grid;gap:14px;padding:4px 0 8px;">
+              <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.7;">
+                {% if selected_project.generator == 'tk_fill' %}
+                这个项目不生成报价单。通过飞书 API 读取 TK 表格副本，自动下载 N 列的 HTML 统计文件，
+                解析后填写 O-Y 列（原文字符~无匹配）。N 列为"同上"时会复用上一条统计；O-Y 已有内容的行会自动跳过。
+                {% else %}
+                这个项目不生成报价单。通过飞书 API 读取 4399 在线表格，自动下载 G 列的 HTML 统计文件，
+                解析后填写 K/L/M 列（全source亚洲字符数/全source字符数/重复字符数）。
+                表格中的公式会自动计算计费字数和合计金额。
+                {% endif %}
+              </p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button class="primary-button" id="tkFillMainBtn" type="button" onclick="startFill()" style="width:max-content;">
+                  <i data-lucide="table-2"></i>
+                  开始 {{ 'TK' if selected_project.generator == 'tk_fill' else '4399' }} 填表
+                </button>
+                <span id="tkFillStatus" style="color:var(--muted);font-size:12px;"></span>
+              </div>
+            </div>
+            {% endif %}
+            {% if selected_project.generator == 'huanta' %}
+            <div class="panel-heading">
+              <div>
+                <h3>完美世界 自动报价</h3>
+                <p>从飞书表格读取需求 → 下载 HTML 统计文件 → 生成报价单 → 回传飞书</p>
+              </div>
+              <i data-lucide="bot"></i>
+            </div>
+            <div style="display:grid;gap:14px;padding:4px 0 8px;">
+              <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.7;">
+                本项目通过飞书自动报价，无需手动上传文件。点击"自动报价"按钮后，
+                系统会自动读取飞书表格中的待报价需求，下载 HTML 统计文件，
+                解析字数并生成报价单，最后将报价单链接和金额回写到飞书表格。
+              </p>
+            </div>
+            {% endif %}
+            {% if selected_project.generator == 'zhan_shuang_feishu' %}
+            <div class="panel-heading">
+              <div>
+                <h3>战双发行 飞书报价</h3>
+                <p>读取飞书表格中飞书来源的需求 → 下载附件 HTML → 统计字数 → 追加到双月汇总报价单</p>
+              </div>
+              <i data-lucide="message-square"></i>
+            </div>
+            <div style="display:grid;gap:14px;padding:4px 0 8px;">
+              <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.7;">
+                这个项目不生成单个报价单。通过飞书 API 读取发行本地化沟通群需求表格，
+                自动下载飞书来源需求的 HTML 附件，解析后追加到双月汇总报价单中。
+                已处理的需求会自动跳过，不会重复报价。
+              </p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button class="primary-button" id="zhanShuangFeishuMainBtn" type="button" onclick="runZhanShuangFeishuQuote()" style="width:max-content;">
+                  <i data-lucide="message-square"></i>
+                  开始飞书报价
+                </button>
+                <span id="zhanShuangFeishuStatus" style="color:var(--muted);font-size:12px;"></span>
+              </div>
+            </div>
+            {% endif %}
+            <form method="post" action="{{ url_for('generate') }}" enctype="multipart/form-data" id="quoteForm" {% if selected_project.generator in ['tk_fill', 'fill_4399', 'zhan_shuang_feishu', 'huanta'] %}style="display:none;"{% endif %}>
+              <div class="panel-heading">
+                <div>
+                  <h3>需求信息</h3>
+                  <p>生成后直接保存到报价单历史</p>
+                </div>
+              <i data-lucide="file-spreadsheet"></i>
+            </div>
+
+          <label>
+            项目
+            <select name="project" id="projectSelect">
+              {% for company, projects in projects_by_company.items() %}
+                <optgroup label="{{ company }}">
+                  {% for project in projects %}
+                    <option value="{{ project.key }}" {% if project.key == selected_project.key %}selected{% endif %}>{{ project.display_name }}</option>
+                  {% endfor %}
+                </optgroup>
+              {% endfor %}
+            </select>
+          </label>
+          <input type="hidden" id="currentProject" value="{{ selected_project.key }}">
+
+          {% if selected_project.generator == 'diezhi' %}
+          <div id="diezhiBatchInfo" class="batch-info">
+            <div class="batch-info-header">
+              <i data-lucide="layers"></i>
+              <span>批次信息</span>
+            </div>
+            <div class="batch-info-body">
+              <div class="batch-info-item">
+                <span class="batch-label">上次报价批次</span>
+                <span class="batch-value" id="lastBatch">--</span>
+              </div>
+              <div class="batch-info-item">
+                <span class="batch-label">待报价批次</span>
+                <span class="batch-value batch-next" id="nextBatch">--</span>
+              </div>
+            </div>
+            <input type="hidden" name="batch_no" id="diezhiBatchNo" value="">
+            <div class="batch-info-actions" id="diezhiBatchActions">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                报价批次
+                <input type="number" id="diezhiBatchOverride" min="1" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:600;">
+              </label>
+              <button class="ghost-button" type="button" onclick="loadDiezhiBatchInfo()" style="font-size:11px;padding:3px 8px;">
+                <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> 刷新
+              </button>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if selected_project.generator != 'diezhi' %}
+          <div class="two-col">
+            <label>
+              需求名
+              <input name="request_name" id="demandName" placeholder="例如 0416需求 / 【战双4.5】翻译委托9 邮件 2026/4/28 2026/5/6">
+            </label>
+            <label>
+              服务内容
+              <input name="service_content" placeholder="不填则使用 HTML 文件名">
+            </label>
+          </div>
+          {% endif %}
+
+          <div class="two-col">
+            <label>
+              报价日期
+              <input type="date" name="quote_date" id="quoteDate" value="{{ today }}">
+            </label>
+            <label>
+              交付日期
+              <input type="date" name="delivery_date" id="deliveryDate" value="{{ tomorrow }}">
+            </label>
+          </div>
+
+          <fieldset class="language-box">
+            <legend>语种</legend>
+            <div class="language-summary" id="languageSummary"></div>
+            <div id="serializedLanguages"></div>
+            <div class="language-checkboxes">
+              {% for language, price in languages.items() %}
+                <label class="language-checkbox">
+                  <input type="checkbox" data-language-enabled {% if language in default_languages %}checked{% endif %}>
+                  <span>{{ language }}</span>
+                  <small>{{ "%.3f"|format(price) }} 元/字</small>
+                </label>
+              {% endfor %}
+            </div>
+            <details class="price-editor">
+              <summary>
+                <span>编辑语种 / 单价</span>
+                <i data-lucide="settings-2"></i>
+              </summary>
+              <div class="language-table" id="languageTable">
+                {% for language, price in languages.items() %}
+                    <div class="language-row" data-language-row>
+                      <input data-language-name value="{{ language }}" aria-label="语种">
+                      <input data-language-price type="number" step="0.001" min="0" value="{{ "%.3f"|format(price) }}" aria-label="单价">
+                      <label class="default-lang-checkbox">
+                        <input type="checkbox" data-default-lang {% if language in default_languages %}checked{% endif %}>
+                        <span>设为默认</span>
+                      </label>
+                      <button class="icon-button row-remove" type="button" title="删除语种">
+                        <i data-lucide="x"></i>
+                      </button>
+                    </div>
+                {% endfor %}
+              </div>
+              <div class="language-actions">
+                <button class="ghost-button add-language" type="button" id="addLanguage">
+                  <i data-lucide="plus"></i>
+                  增加语种
+                </button>
+                <button class="ghost-button save-config" type="button" id="saveConfig">
+                  <i data-lucide="save"></i>
+                  保存配置
+                </button>
+                <button class="ghost-button reset-config" type="button" id="resetConfig">
+                  <i data-lucide="rotate-cw"></i>
+                  恢复默认
+                </button>
+              </div>
+            </details>
+          </fieldset>
+
+          {% if selected_project.generator != 'diezhi' %}
+          <label class="upload-zone" id="uploadZone">
+            <input id="htmlFiles" type="file" name="html_files" accept=".html,.htm" multiple required>
+            <i data-lucide="upload-cloud"></i>
+            <span id="uploadTitle">选择或拖入 HTML 文件</span>
+            <small id="uploadHint">可一次上传多个文件</small>
+            <ul class="file-list" id="fileList" aria-live="polite"></ul>
+          </label>
+
+          <div id="fileLanguageConfig" class="file-language-config"></div>
+          {% endif %}
+
+          <div class="save-path-section">
+            <label>
+              另存为（可选）
+              <div class="save-path-row">
+                <input type="text" id="savePath" name="save_path" value="{{ save_path or '' }}" placeholder="例如: D:\结算\报价单">
+                <button type="button" class="ghost-button" id="clearSavePath">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+              <small style="color: var(--muted); font-size: 11px; margin-top: 4px; display: block;">直接输入文件夹路径，设置后会同时保存到默认路径和此路径，下次生成时默认使用此设置</small>
+            </label>
+          </div>
+
+          {% if selected_project.generator != 'diezhi' %}
+          <button class="primary-button" type="submit">
+              <i data-lucide="sparkles"></i>
+              生成报价单
+            </button>
+          {% endif %}
+          </form>
+        </div>
+
+        <!-- 结算面板 -->
+        <div class="panel settle-panel" id="settlePanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>月度结算</h3>
+              <p id="settleProjectName"></p>
+            </div>
+            <i data-lucide="calculator"></i>
+          </div>
+
+          <div id="settleUnsupported" style="display:none;padding:40px 18px;text-align:center;color:var(--muted);">
+            <i data-lucide="construction" style="width:40px;height:40px;margin-bottom:12px;"></i>
+            <p style="font-size:14px;">该项目暂不支持结算功能</p>
+            <p style="font-size:12px;">结算功能开发中，敬请期待</p>
+          </div>
+
+          <div id="settleContent" style="display:none;">
+            <div class="settle-month-row">
+              <div class="settle-month-line">
+                <select id="settleYear" class="settle-select"></select>
+                <span style="color:var(--muted);font-size:13px;">年</span>
+                <select id="settleMonth" class="settle-select"></select>
+                <span style="color:var(--muted);font-size:13px;">月</span>
+                <div id="multiMonthSettleBox" style="display:none;margin-left:8px;">
+                  <span style="font-size:10px;color:var(--muted);">（可多选，最多3个连续月）</span>
+                  <div id="monthSettleCheckboxes" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;"></div>
+                </div>
+              </div>
+              <div class="settle-actions">
+                <button class="ghost-button" id="previewBtn" onclick="loadSettlePreview()">
+                  <i data-lucide="search"></i> 预览
+                </button>
+                <button class="primary-button" id="generateSettleBtn" onclick="generateSettlement()" disabled>
+                  <i data-lucide="sparkles"></i> <span id="genBtnText">生成结算文件</span>
+                </button>
+                <span id="settleRateBox" style="display:none;margin-left:8px;">
+                  <label style="font-size:12px;">汇率 USD/CNY</label>
+                  <input type="number" id="settleExchangeRate" step="0.0001" min="1" max="10" value="" placeholder="自动获取" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;">
+                </span>
+                <button class="primary-button" id="batchSettleBtn" onclick="batchGeneratePerfectWorld()" style="display:none;background:var(--accent);">
+                  <i data-lucide="zap"></i> 一键生成三个项目
+                </button>
+                <button class="ghost-button" id="pwNotifyTextBtn" onclick="generatePWNotifyText()" style="display:none;">
+                  <i data-lucide="message-square-text"></i> 生成通知文本
+                </button>
+                <button class="primary-button" id="sealedSettleBtn" onclick="generateSealedFromPanel()" disabled style="display:none;">
+                  <i data-lucide="file-output"></i> 生成盖章版结算单
+                </button>
+                <!-- TK 结算按钮 -->
+                <button class="primary-button" id="tkCopyOrderlistBtn" onclick="tkCopyOrderlist()" style="display:none;">
+                  <i data-lucide="copy"></i> 制作对账单
+                </button>
+                <button class="primary-button" id="tkGenerateBtn" onclick="tkGenerateSettlement()" style="display:none;">
+                  <i data-lucide="sparkles"></i> 生成结算单和Invoice
+                </button>
+              </div>
+            </div>
+
+            <div class="settle-stats" id="settleStats" style="display:none;">
+              <div class="settle-stat-item">
+                <span class="settle-stat-num" id="settleCount">0</span>
+                <span class="settle-stat-label">交付记录</span>
+              </div>
+              <div class="settle-stat-item">
+                <span class="settle-stat-num" id="settleTotal">0</span>
+                <span class="settle-stat-label">费用合计 CNY</span>
+              </div>
+            </div>
+
+            <div class="settle-table-wrap" id="settleTableWrap" style="display:none;">
+              <table class="settle-table">
+              <thead>
+                <tr>
+                  <th style="width:30px;">#</th>
+                  <th>委托文本</th>
+                  <th>Task No</th>
+                  <th>需求内容</th>
+                  <th style="width:90px;">交付日期</th>
+                  <th style="width:80px;" class="r">计费字数</th>
+                  <th style="width:55px;" class="r">单价</th>
+                  <th style="width:90px;" class="r">费用小计</th>
+                </tr>
+              </thead>
+              <tbody id="settlePreviewBody"></tbody>
+            </table>
+          </div>
+
+          <div class="settle-results" id="settleResults"></div>
+
+          <div class="invoice-request" id="invoiceRequestBox" style="display:none;">
+            <div class="panel-heading" style="margin-bottom:8px;">
+              <div><h3>开票请求</h3></div>
+              <i data-lucide="file-text"></i>
+            </div>
+            <pre id="invoiceRequestText" style="white-space:pre-wrap;font-size:12px;line-height:1.6;background:var(--bg-input);padding:12px;border-radius:6px;border:1px solid var(--border);max-height:300px;overflow-y:auto;"></pre>
+            <button class="ghost-button" onclick="copyInvoiceText()" style="margin-top:6px;">
+              <i data-lucide="copy"></i> 复制开票信息
+            </button>
+          </div>
+        </div>
+      </div>
+
+        <!-- 一键报价面板 -->
+        <div class="panel" id="quoteAllPanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>一键报价</h3>
+              <p>自动检测并执行所有项目的新需求报价（共7个项目）</p>
+            </div>
+            <i data-lucide="zap"></i>
+          </div>
+          <div class="quote-all-grid" id="quoteAllGrid"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap;">
+            <button class="primary-button" id="quoteAllStartBtn" onclick="startQuoteAll()">
+              <i data-lucide="zap"></i> 开始一键报价
+            </button>
+            <span id="quoteAllStatusText" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+          <div id="quoteAllProgress" style="display:none;padding:8px 0;"></div>
+          <div id="quoteAllResults" style="display:none;padding:8px 0;"></div>
+        </div>
+
+        <!-- 月度结算工作台面板 -->
+        <div class="panel" id="settlementWorkbenchPanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>月度结算工作台</h3>
+              <p>统一查看和生成所有项目的月度结算文件</p>
+            </div>
+            <i data-lucide="bar-chart-big"></i>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px;flex-wrap:wrap;font-size:12px;">
+            <select id="wbYear" class="settle-select" style="padding:2px 4px;font-size:12px;"></select>
+            <span style="color:var(--muted);">年</span>
+            <select id="wbMonth" class="settle-select" style="padding:2px 4px;font-size:12px;"></select>
+            <span style="color:var(--muted);">月</span>
+            <label style="font-size:11px;margin-left:2px;">汇率</label>
+            <input type="number" id="wbExchangeRate" step="0.0001" min="1" max="10" value="" placeholder="自动获取" style="width:60px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-size:11px;">
+            <label style="font-size:11px;cursor:pointer;margin-left:4px;"><input type="checkbox" id="wbSelectAll" onchange="toggleWbSelectAll()" style="width:12px;height:12px;"> 全选</label>
+            <button class="ghost-button" id="wbPreviewBtn" onclick="loadWbPreview()" style="font-size:11px;padding:3px 10px;">
+              <i data-lucide="search" style="width:13px;height:13px;"></i> 预览
+            </button>
+            <button class="primary-button" id="wbGenerateBtn" onclick="batchWbGenerate()" disabled style="font-size:11px;padding:3px 12px;">
+              <i data-lucide="sparkles" style="width:13px;height:13px;"></i> 生成结算
+            </button>
+          </div>
+          <div style="display:none;" id="wbTableWrap">
+            <div id="wbCompanyGroups" style="max-height:55vh;overflow-y:auto;"></div>
+            <div id="wbSummary" style="padding:4px 0;font-size:11px;color:var(--muted);"></div>
+          </div>
+          <div id="wbResults" style="padding:4px 0;"></div>
+        </div>
+
+        <!-- 祖龙客服结算面板 -->
+        <div class="panel" id="zulongPanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>祖龙客服结算</h3>
+              <p>以闪亮之名 / 龙族 — 日语客服月度结算</p>
+            </div>
+            <i data-lucide="headphones"></i>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:0 0 10px;flex-wrap:wrap;font-size:12px;">
+            <select id="zlYear" class="settle-select" style="padding:2px 4px;font-size:12px;"></select>
+            <span style="color:var(--muted);">年</span>
+            <select id="zlMonth" class="settle-select" style="padding:2px 4px;font-size:12px;"></select>
+            <span style="color:var(--muted);">月</span>
+            <button class="primary-button" id="zlGenerateBtn" onclick="generateZulong()" style="font-size:12px;padding:4px 14px;margin-left:8px;">
+              <i data-lucide="sparkles" style="width:14px;height:14px;"></i> 生成结算
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;" id="zlProjectCards"></div>
+          <div id="zlResults" style="padding:4px 0;"></div>
+          <details id="zlInvoiceDetails" open style="font-size:11px;margin-top:6px;">
+            <summary style="cursor:pointer;color:var(--muted);padding:4px 0;">开票信息</summary>
+            <div id="zlInvoiceContent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="workspace-sidebar">
+        <div class="panel history-panel" id="quoteHistoryPanel">
+          <div class="panel-heading">
+            <div>
+              <h3>报价单历史</h3>
+              <span class="history-count" id="historyCount">0</span>
+            </div>
+            <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadQuoteHistory()" title="刷新"></i>
+          </div>
+          <div class="history-content" id="historyContent">
+            <div class="history-loading">
+              <i data-lucide="loader" class="loading"></i>
+              <span>加载中...</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel settle-history-panel" id="settleHistoryPanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>结算文件</h3>
+              <span class="history-count" id="settleHistoryCount">0</span>
+            </div>
+            <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="refreshSettleSidebar()" title="刷新"></i>
+          </div>
+          <div class="history-content" id="settleHistoryContent">
+            <div style="padding: 16px; text-align: center; color: #9aa8b7; font-size: 12px;">选择年月后加载</div>
+          </div>
+        </div>
+        <div class="panel history-panel" id="wbFileTreePanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>结算文件</h3>
+            </div>
+            <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadWbFileTree()" title="刷新"></i>
+          </div>
+          <div class="history-content" id="wbFileTreeContent">
+            <div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>
+          </div>
+        </div>
+        <div class="panel history-panel" id="zlFileTreePanel" style="display:none;">
+          <div class="panel-heading">
+            <div>
+              <h3>结算文件</h3>
+            </div>
+            <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadZlFileTree()" title="刷新"></i>
+          </div>
+          <div class="history-content" id="zlFileTreeContent">
+            <div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </section>
+  </main>
+
+  <div class="modal-overlay" id="settingsModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>路径设置</h2>
+        <button class="icon-button" onclick="closeSettings()">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label>报价单历史目录</label>
+          <div class="modal-input-row">
+            <input type="text" id="settingsQuotePath" placeholder="默认: 应用目录/报价单历史">
+            <button type="button" class="ghost-button" onclick="browseFolder('settingsQuotePath')">
+              <i data-lucide="folder-open"></i>
+            </button>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label>结算单目录</label>
+          <div class="modal-input-row">
+            <input type="text" id="settingsSettlePath" placeholder="默认: 应用目录/结算">
+            <button type="button" class="ghost-button" onclick="browseFolder('settingsSettlePath')">
+              <i data-lucide="folder-open"></i>
+            </button>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label>主题</label>
+          <div style="display:flex;gap:8px;">
+            <button class="ghost-button" onclick="setTheme('dark')" id="themeDarkBtn" style="flex:1;">
+              <i data-lucide="moon"></i> 深色
+            </button>
+            <button class="ghost-button" onclick="setTheme('light')" id="themeLightBtn" style="flex:1;">
+              <i data-lucide="sun"></i> 浅色
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-button" onclick="closeSettings()">取消</button>
+        <button class="primary-button" onclick="saveSettings()">
+          <i data-lucide="save"></i>
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  <script>
+    try { lucide.createIcons(); updateThemeBtns(); } catch(e) { console.warn("lucide init failed", e); }
+    document.getElementById("projectSelect").addEventListener("change", (event) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("project", event.target.value);
+      window.location.href = url.toString();
+    });
+
+    const uploadZone = document.getElementById("uploadZone");
+    const fileInput = document.getElementById("htmlFiles");
+    const fileList = document.getElementById("fileList");
+    const uploadTitle = document.getElementById("uploadTitle");
+    const uploadHint = document.getElementById("uploadHint");
+    const languageTable = document.getElementById("languageTable");
+    const languageSummary = document.getElementById("languageSummary");
+    const serializedLanguages = document.getElementById("serializedLanguages");
+    const addLanguage = document.getElementById("addLanguage");
+    const languageCheckboxes = document.querySelector(".language-checkboxes");
+    const demandNameInput = document.getElementById("demandName");
+    const quoteDateInput = document.getElementById("quoteDate");
+    const deliveryDateInput = document.getElementById("deliveryDate");
+    const currentProject = document.getElementById("currentProject");
+    const fileLanguageConfig = document.getElementById("fileLanguageConfig");
+
+    function parseDemandNameForDates() {
+      if (currentProject.value !== "zhan_shuang") return;
+      
+      const input = demandNameInput.value.trim();
+      const datePattern = /(\d{4})\/(\d{1,2})\/(\d{1,2})/g;
+      const dates = [];
+      let match;
+      
+      while ((match = datePattern.exec(input)) !== null) {
+        const [, year, month, day] = match;
+        dates.push(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+      }
+      
+      if (dates.length >= 1) {
+        quoteDateInput.value = dates[0];
+      }
+      if (dates.length >= 2) {
+        deliveryDateInput.value = dates[1];
+      }
+    }
+
+    if (demandNameInput) demandNameInput.addEventListener("input", parseDemandNameForDates);
+
+    function renderSelectedFiles() {
+      const files = Array.from(fileInput.files || []);
+      fileList.innerHTML = "";
+      uploadZone.classList.toggle("has-files", files.length > 0);
+      uploadTitle.textContent = files.length ? `已选择 ${files.length} 个 HTML 文件` : "选择或拖入 HTML 文件";
+      uploadHint.textContent = files.length ? "可以继续更换文件，或直接生成报价单" : "可一次上传多个文件";
+      
+      files.forEach((file, index) => {
+        const item = document.createElement("li");
+        item.textContent = file.name;
+        fileList.appendChild(item);
+      });
+      
+      renderFileLanguageConfigs(files);
+      
+      if (files.length > 1) {
+        languageCheckboxes.querySelectorAll("[data-language-enabled]").forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        updateLanguageSummary();
+      }
+    }
+
+    function renderFileLanguageConfigs(files) {
+      if (files.length <= 1) {
+        fileLanguageConfig.innerHTML = "";
+        return;
+      }
+      
+      const prices = getLanguagePrices();
+      const languages = Object.keys(prices);
+      
+      if (languages.length === 0) {
+        fileLanguageConfig.innerHTML = '<p class="hint" style="color: #ef4444;">请先在"编辑语种/单价"中添加语种配置</p>';
+        return;
+      }
+      
+      const defaultLanguages = Array.from(
+        languageCheckboxes.querySelectorAll("[data-language-enabled]:checked")
+      ).map(checkbox => checkbox.closest(".language-checkbox").querySelector("span").textContent.trim());
+      
+      fileLanguageConfig.innerHTML = `
+        <h4>文件语种配置</h4>
+        <p class="hint">请为每个文件选择对应的语种</p>
+      `;
+      
+      files.forEach((file, index) => {
+        const configDiv = document.createElement("div");
+        configDiv.className = "file-config-item";
+        configDiv.innerHTML = `
+          <div class="file-name">${index + 1}. ${escapeHtml(file.name)}</div>
+          <div class="file-languages">
+            ${languages.map(lang => {
+              const isDefault = defaultLanguages.includes(lang);
+              const safeLang = escapeHtml(lang);
+              return `
+                <label class="language-checkbox">
+                  <input type="checkbox" data-file-lang="${index}" value="${safeLang}" ${isDefault ? 'checked' : ''}>
+                  <span>${safeLang}</span>
+                  <small>${parseFloat(prices[lang]).toFixed(3)} 元/字</small>
+                </label>
+              `;
+            }).join('')}
+          </div>
+        `;
+        fileLanguageConfig.appendChild(configDiv);
+      });
+    }
+
+    if (fileInput) fileInput.addEventListener("change", renderSelectedFiles);
+    if (uploadZone) {
+      ["dragenter", "dragover"].forEach((eventName) => {
+        uploadZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          uploadZone.classList.add("is-dragging");
+        });
+      });
+      uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("is-dragging"));
+      uploadZone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        uploadZone.classList.remove("is-dragging");
+        const files = event.dataTransfer?.files;
+        if (files && files.length > 0) {
+          fileInput.files = files;
+          renderSelectedFiles();
+        }
+      });
+    }
+
+    function languageRows() {
+      return Array.from(languageTable.querySelectorAll("[data-language-row]"));
+    }
+
+    function getLanguagePrices() {
+      const prices = {};
+      languageRows().forEach((row) => {
+        const name = row.querySelector("[data-language-name]").value.trim();
+        const price = row.querySelector("[data-language-price]").value.trim();
+        if (name && price) {
+          prices[name] = price;
+        }
+      });
+      return prices;
+    }
+
+    function updateLanguageSummary() {
+      const prices = getLanguagePrices();
+      const selected = Array.from(languageCheckboxes.querySelectorAll("[data-language-enabled]:checked"))
+        .map((checkbox) => {
+          const label = checkbox.closest(".language-checkbox");
+          const name = label.querySelector("span").textContent.trim();
+          const price = prices[name] || label.querySelector("small").textContent.replace("元/字", "").trim();
+          return name ? `${name} ${price}` : "";
+        })
+        .filter(Boolean);
+      languageSummary.textContent = selected.length ? selected.join(" / ") : "未选择语种，将使用项目默认语种";
+    }
+
+    function syncLanguageCheckboxes() {
+      const prices = getLanguagePrices();
+      const existingNames = new Set();
+      
+      languageCheckboxes.querySelectorAll(".language-checkbox").forEach((label) => {
+        const name = label.querySelector("span").textContent.trim();
+        existingNames.add(name);
+      });
+      
+      Object.keys(prices).forEach((name) => {
+        if (!existingNames.has(name)) {
+          const label = document.createElement("label");
+          label.className = "language-checkbox";
+          const safeName = escapeHtml(name);
+          label.innerHTML = `
+            <input type="checkbox" data-language-enabled>
+            <span>${safeName}</span>
+            <small>${parseFloat(prices[name]).toFixed(3)} 元/字</small>
+          `;
+          label.querySelector("[data-language-enabled]").addEventListener("change", updateLanguageSummary);
+          languageCheckboxes.appendChild(label);
+        }
+      });
+      
+      languageCheckboxes.querySelectorAll(".language-checkbox").forEach((label) => {
+        const name = label.querySelector("span").textContent.trim();
+        const price = label.querySelector("small");
+        if (prices[name] !== undefined) {
+          price.textContent = `${parseFloat(prices[name]).toFixed(3)} 元/字`;
+        } else {
+          label.remove();
+        }
+      });
+      
+      updateLanguageSummary();
+    }
+
+    function wireLanguageRow(row) {
+      row.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+        updateLanguageSummary();
+        syncLanguageCheckboxes();
+      }));
+      row.querySelector(".row-remove").addEventListener("click", () => {
+        row.remove();
+        updateLanguageSummary();
+        syncLanguageCheckboxes();
+      });
+    }
+
+    function createLanguageRow() {
+      const row = document.createElement("div");
+      row.className = "language-row";
+      row.setAttribute("data-language-row", "");
+      row.innerHTML = `
+        <input data-language-name placeholder="语种，例如 中翻韩" aria-label="语种">
+        <input data-language-price type="number" step="0.001" min="0" placeholder="单价" aria-label="单价">
+        <label class="default-lang-checkbox">
+          <input type="checkbox" data-default-lang>
+          <span>设为默认</span>
+        </label>
+        <button class="icon-button row-remove" type="button" title="删除语种"><i data-lucide="x"></i></button>
+      `;
+      languageTable.appendChild(row);
+      wireLanguageRow(row);
+      lucide.createIcons();
+      updateLanguageSummary();
+      syncLanguageCheckboxes();
+    }
+
+    function serializeLanguages() {
+      serializedLanguages.innerHTML = "";
+      const files = Array.from(fileInput.files || []);
+      const prices = getLanguagePrices();
+
+
+      if (files.length <= 1) {
+        const checkedBoxes = languageCheckboxes.querySelectorAll("[data-language-enabled]:checked");
+
+
+        Array.from(checkedBoxes).forEach((checkbox) => {
+          const label = checkbox.closest(".language-checkbox");
+          const name = label.querySelector("span").textContent.trim();
+          const price = prices[name] || label.querySelector("small").textContent.replace("元/字", "").trim();
+          if (!name) return;
+          const nameInput = document.createElement("input");
+          nameInput.type = "hidden";
+          nameInput.name = "selected_languages";
+          nameInput.value = name;
+          const priceInput = document.createElement("input");
+          priceInput.type = "hidden";
+          priceInput.name = "selected_prices";
+          priceInput.value = price;
+          serializedLanguages.append(nameInput, priceInput);
+        });
+      } else {
+        files.forEach((file, fileIndex) => {
+          const fileLanguages = Array.from(document.querySelectorAll(`[data-file-lang="${fileIndex}"]:checked`));
+          fileLanguages.forEach((checkbox) => {
+            const name = checkbox.value;
+            const price = prices[name];
+            if (!name || price === undefined) return;
+            const langInput = document.createElement("input");
+            langInput.type = "hidden";
+            langInput.name = `file_languages[${fileIndex}]`;
+            langInput.value = name;
+            const priceInput = document.createElement("input");
+            priceInput.type = "hidden";
+            priceInput.name = `file_prices[${fileIndex}]`;
+            priceInput.value = price;
+            serializedLanguages.append(langInput, priceInput);
+          });
+        });
+      }
+    }
+
+    languageRows().forEach(wireLanguageRow);
+    if (languageCheckboxes) {
+      languageCheckboxes.querySelectorAll("[data-language-enabled]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          updateLanguageSummary();
+          renderFileLanguageConfigs(Array.from((fileInput && fileInput.files) || []));
+        });
+      });
+    }
+    if (addLanguage) addLanguage.addEventListener("click", createLanguageRow);
+    
+    document.getElementById("saveConfig").addEventListener("click", saveConfig);
+    document.getElementById("resetConfig").addEventListener("click", resetConfig);
+    
+    updateLanguageSummary();
+    
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    function showToast(message, isError = false) {
+      const existing = document.querySelector('.copy-toast');
+      if (existing) existing.remove();
+      
+      const toast = document.createElement('div');
+      toast.className = 'copy-toast';
+      toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: ' + (isError ? '#ef4444' : '#10b981') + '; color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 1000);
+    }
+    
+    const quoteForm = document.getElementById('quoteForm');
+    if (quoteForm) {
+      const button = quoteForm.querySelector('.primary-button');
+      quoteForm.addEventListener('submit', function(e) {
+        serializeLanguages();
+        if (button) {
+          button.disabled = true;
+          button.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+          lucide.createIcons();
+        }
+      });
+    }
+    
+    function openFileInExcel(filePath) {
+      if (window.electronAPI) {
+        window.electronAPI.openFile(filePath);
+      } else {
+        fetch('/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        }).catch(function(e) { console.error('打开文件失败:', e); });
+      }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      if (!window.electronAPI) {
+        const openButtons = document.querySelectorAll('button[onclick*="openFileInExcel"]');
+        openButtons.forEach(button => {
+          button.style.display = 'none';
+        });
+      }
+      
+      loadQuoteHistory();
+    });
+    
+    function loadQuoteHistory() {
+      const historyContent = document.getElementById('historyContent');
+      const historyCount = document.getElementById('historyCount');
+      const projectKey = currentProject.value;
+      
+      fetch('/quote-history?project=' + encodeURIComponent(projectKey))
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            if (!data.data || data.data.length === 0) {
+              historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #9aa8b7; font-size: 12px;">暂无报价单历史</div>';
+              historyCount.textContent = '0';
+              return;
+            }
+            
+            let totalCount = 0;
+            const html = data.data.map(project => {
+              totalCount += project.folders ? project.folders.reduce((sum, f) => sum + (f.files?.length || 0), 0) : (project.files?.length || 0);
+
+              const renderFolders = (folders) => {
+                if (!folders || folders.length === 0) return '';
+                return folders.map(folder => {
+                  const folderFiles = (folder.files || []).map(file => {
+                    const date = formatDate(file.mtime);
+                    const encodedPath = encodeURIComponent(file.path);
+                    return `
+                      <div class="history-file-item" data-path="${encodedPath}">
+                        <i data-lucide="file-spreadsheet" onclick="openFileInExcel('${file.path.replace(/\\/g, '\\\\')}')"></i>
+                        <span class="history-file-name" onclick="openFileInExcel('${file.path.replace(/\\/g, '\\\\')}')">${escapeHtml(file.name)}</span>
+                        <span class="history-file-date">${date}</span>
+                        <button class="history-file-copy" onclick="copyQuoteFile('${file.path.replace(/\\/g, '\\\\')}')" title="复制文件">
+                          <i data-lucide="copy"></i>
+                        </button>
+                        <button class="history-file-delete" onclick="deleteQuoteFile('${file.path.replace(/\\/g, '\\\\')}', this)">
+                          <i data-lucide="trash-2"></i>
+                        </button>
+                      </div>
+                    `;
+                  }).join('');
+
+                  const subFolders = folder.folders ? renderFolders(folder.folders) : '';
+                  const folderCount = (folder.files?.length || 0) + (folder.folders ? folder.folders.reduce((sum, f) => sum + (f.files?.length || 0), 0) : 0);
+                  const encodedFolderPath = encodeURIComponent(folder.path || '');
+
+                  return `
+                    <div class="history-month-folder">
+                      <div class="history-month-header" onclick="toggleProjectHistory(this)" data-folder-path="${encodedFolderPath}">
+                        <i data-lucide="chevron-right"></i>
+                        <span>${escapeHtml(folder.name)}</span>
+                        <span class="history-count">${folderCount}</span>
+                      </div>
+                      <div class="history-file-list">
+                        ${folderFiles}
+                        ${subFolders}
+                      </div>
+                    </div>
+                  `;
+                }).join('');
+              };
+
+              const foldersHtml = project.folders ? renderFolders(project.folders) : '';
+              const projectCount = project.folders ? project.folders.reduce((sum, f) => sum + (f.files?.length || 0), 0) : (project.files?.length || 0);
+              const encodedProjectPath = encodeURIComponent(project.path || '');
+
+              return `
+                <div class="history-project">
+                  <div class="history-project-header" onclick="toggleProjectHistory(this)" data-folder-path="${encodedProjectPath}">
+                    <i data-lucide="chevron-right"></i>
+                    <span>${escapeHtml(project.name)}</span>
+                    <span class="history-count">${projectCount}</span>
+                  </div>
+                  <div class="history-file-list">
+                    ${foldersHtml}
+                  </div>
+                </div>
+              `;
+            }).join('');
+            
+            historyContent.innerHTML = html;
+            historyCount.textContent = totalCount;
+            lucide.createIcons();
+          } else {
+            historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 12px;">加载失败</div>';
+            historyCount.textContent = '0';
+          }
+        })
+        .catch(error => {
+          console.error('加载报价单历史失败:', error);
+          historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 12px;">加载失败</div>';
+          historyCount.textContent = '0';
+        });
+    }
+    
+    
+    function toggleProjectHistory(header) {
+      header.classList.toggle('collapsed');
+      const fileList = header.nextElementSibling;
+      if (fileList) {
+        fileList.style.display = header.classList.contains('collapsed') ? 'none' : 'block';
+      }
+    }
+    
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    
+    function formatDate(timestamp) {
+      const date = new Date(timestamp * 1000);
+      const now = new Date();
+      const diff = now - date;
+      
+      if (diff < 60 * 1000) return '刚刚';
+      if (diff < 60 * 60 * 1000) return Math.floor(diff / (60 * 1000)) + ' 分钟前';
+      if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / (60 * 60 * 1000)) + ' 小时前';
+      if (diff < 7 * 24 * 60 * 60 * 1000) return Math.floor(diff / (24 * 60 * 60 * 1000)) + ' 天前';
+      
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    }
+    
+    function deleteQuoteFile(filePath, button) {
+      if (!confirm('确定要删除这个报价单吗？删除后无法恢复。')) {
+        return;
+      }
+      
+      button.disabled = true;
+      button.style.opacity = '0.5';
+      
+      fetch('/delete-quote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: filePath })
+      })
+      .then(response => response.text())
+      .then(text => {
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { status: 'success' };
+        }
+        
+        if (data.status === 'success') {
+          const fileItem = button.parentElement;
+          fileItem.remove();
+          
+          const projectHeader = button.closest('.history-project').querySelector('.history-project-header');
+          const countSpan = projectHeader.querySelector('.history-count');
+          const currentCount = parseInt(countSpan.textContent);
+          countSpan.textContent = currentCount - 1;
+          
+          const totalCountSpan = document.getElementById('historyCount');
+          const totalCount = parseInt(totalCountSpan.textContent);
+          totalCountSpan.textContent = totalCount - 1;
+        } else {
+          alert('删除失败: ' + (data.message || '未知错误'));
+        }
+        button.disabled = false;
+        button.style.opacity = '1';
+      })
+      .catch(error => {
+        console.error('删除失败:', error);
+        const fileItem = button.parentElement;
+        fileItem.remove();
+        
+        const projectHeader = button.closest('.history-project').querySelector('.history-project-header');
+        const countSpan = projectHeader.querySelector('.history-count');
+        const currentCount = parseInt(countSpan.textContent);
+        countSpan.textContent = currentCount - 1;
+        
+        const totalCountSpan = document.getElementById('historyCount');
+        const totalCount = parseInt(totalCountSpan.textContent);
+        totalCountSpan.textContent = totalCount - 1;
+        
+        button.disabled = false;
+        button.style.opacity = '1';
+      });
+    }
+    
+    function copyQuoteFile(filePath) {
+      if (window.electronAPI && window.electronAPI.copyToClipboard) {
+        window.electronAPI.copyToClipboard(filePath).then((result) => {
+          if (result.success) {
+            showToast('已复制到剪贴板，可直接粘贴到微信');
+          } else {
+            showToast('复制失败: ' + (result.error || '未知错误'), true);
+          }
+        }).catch((err) => {
+          showToast('复制失败: ' + err.message, true);
+        });
+      } else {
+        showToast('请在Electron应用中使用此功能', true);
+      }
+    }
+
+    function showContextMenu(targetPath, x, y, isFolder = false) {
+      const existing = document.querySelector('.context-menu');
+      if (existing) existing.remove();
+
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: #1e2937; border: 1px solid #3b4754; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; overflow: hidden;`;
+
+      let items;
+      if (isFolder) {
+        items = [
+          { label: '打开文件夹', icon: 'folder-open', action: () => openTargetFolder(targetPath) },
+        ];
+      } else {
+        items = [
+          { label: '打开文件', icon: 'file-spreadsheet', action: () => openFileInExcel(targetPath) },
+          { label: '打开目标文件夹', icon: 'folder-open', action: () => openFileLocation(targetPath) },
+          { label: '复制文件', icon: 'copy', action: () => copyQuoteFile(targetPath) },
+          { label: '删除', icon: 'trash-2', action: () => {
+            const fileItem = document.querySelector(`.history-file-item[data-path="${encodeURIComponent(targetPath).replace(/'/g, "\\'")}"]`);
+            if (fileItem) deleteQuoteFile(targetPath, fileItem.querySelector('.history-file-delete'));
+          }},
+        ];
+      }
+
+      menu.replaceChildren();
+
+      items.forEach(item => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'context-menu-item';
+        menuItem.setAttribute('data-action', item.label);
+        menuItem.style.cssText = 'padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #e2e8f0; transition: background 0.15s;';
+
+        const icon = document.createElement('i');
+        icon.setAttribute('data-lucide', item.icon);
+        icon.style.cssText = 'width: 16px; height: 16px;';
+        menuItem.appendChild(icon);
+
+        const span = document.createElement('span');
+        span.textContent = item.label;
+        menuItem.appendChild(span);
+
+        menuItem.addEventListener('click', () => {
+          item.action();
+          menu.remove();
+        });
+        menuItem.addEventListener('mouseenter', () => {
+          menuItem.style.background = '#3b4754';
+        });
+        menuItem.addEventListener('mouseleave', () => {
+          menuItem.style.background = 'transparent';
+        });
+
+        menu.appendChild(menuItem);
+      });
+
+      document.body.appendChild(menu);
+      lucide.createIcons();
+
+      document.addEventListener('click', function closeMenu(e) {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        }
+      });
+    }
+
+    function openFileLocation(filePath) {
+
+      if (window.electronAPI) {
+        window.electronAPI.openFileLocation(filePath);
+      } else {
+        window.open('/open-folder?path=' + encodeURIComponent(filePath));
+      }
+    }
+
+    function openTargetFolder(folderPath) {
+
+      if (window.electronAPI) {
+        window.electronAPI.openFolder(folderPath);
+      } else {
+        window.open('/open-folder?path=' + encodeURIComponent(folderPath));
+      }
+    }
+
+    function handleDragStart(event) {
+      const filePath = event.currentTarget.dataset.filepath;
+
+
+      if (!filePath) {
+
+        return;
+      }
+
+      event.dataTransfer.effectAllowed = 'copy';
+      event.currentTarget.style.opacity = '0.5';
+
+      if (window.electronAPI) {
+
+        window.electronAPI.requestDrag(filePath);
+      } else {
+
+      }
+    }
+    
+    function handleDragEnd(event) {
+      event.currentTarget.style.opacity = '1';
+    }
+    
+    function saveConfig() {
+      const rows = languageRows();
+      const languageNames = [];
+      const languagePrices = [];
+      const defaultLanguages = [];
+      
+      rows.forEach((row) => {
+        const name = row.querySelector("[data-language-name]").value.trim();
+        const price = row.querySelector("[data-language-price]").value;
+        const isDefault = row.querySelector("[data-default-lang]").checked;
+        
+        if (name) {
+          languageNames.push(name);
+          languagePrices.push(price);
+          if (isDefault) {
+            defaultLanguages.push(name);
+          }
+        }
+      });
+      
+      fetch("/save-language-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: (() => {
+          const params = new URLSearchParams();
+          params.append("project", currentProject.value);
+          languageNames.forEach(name => params.append("language_names[]", name));
+          languagePrices.forEach(price => params.append("language_prices[]", price));
+          defaultLanguages.forEach(lang => params.append("default_languages[]", lang));
+          return params;
+        })(),
+      })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.status === "success") {
+          alert("配置已保存！");
+          window.location.reload();
+        } else {
+          alert("保存失败: " + data.message);
+        }
+      })
+      .catch((error) => {
+        alert("保存失败: " + error.message);
+      });
+    }
+    
+    function resetConfig() {
+      if (confirm("确定要恢复默认配置吗？")) {
+        fetch("/reset-language-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ project: currentProject.value }),
+        })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.status === "success") {
+            window.location.reload();
+          } else {
+            alert("重置失败: " + data.message);
+          }
+        })
+        .catch((error) => {
+          alert("重置失败: " + error.message);
+        });
+      }
+    }
+    
+    document.getElementById('saveProjectConfig').addEventListener('click', saveProjectConfig);
+    
+    function saveProjectConfig() {
+      const companyGroups = document.querySelectorAll('.manager-company');
+      const configData = [];
+      
+      companyGroups.forEach(companyGroup => {
+        const companyName = companyGroup.querySelector('.company-name-input').value.trim();
+        const projectItems = companyGroup.querySelectorAll('.manager-project-item');
+        
+        projectItems.forEach(item => {
+          const projectKey = item.dataset.projectKey;
+          const name = item.querySelector('.manager-project-name').value.trim();
+          const sortOrder = parseInt(item.querySelector('.manager-sort-order').value) || 0;
+          
+          if (name) {
+            configData.push({
+              project_key: projectKey,
+              display_name: name,
+              sort_order: sortOrder,
+              company: companyName,
+            });
+          }
+        });
+      });
+      
+      fetch('/save-project-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configData),
+      })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.status === 'success') {
+          alert('配置已保存！');
+          window.location.reload();
+        } else {
+          alert('保存失败: ' + data.message);
+        }
+      })
+      .catch((error) => {
+        alert('保存失败: ' + error.message);
+      });
+    }
+    
+    let draggedItem = null;
+    
+    document.querySelectorAll('.manager-project-item .drag-handle').forEach(handle => {
+      handle.addEventListener('dragstart', (e) => {
+        draggedItem = handle.parentElement;
+        draggedItem.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      
+      handle.addEventListener('dragend', (e) => {
+        draggedItem.classList.remove('dragging');
+        draggedItem = null;
+        
+        document.querySelectorAll('.manager-project-item').forEach(item => {
+          item.classList.remove('drag-over');
+        });
+      });
+    });
+    
+    document.querySelectorAll('.manager-project-item').forEach(item => {
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (draggedItem && draggedItem !== item) {
+          item.classList.add('drag-over');
+        }
+      });
+      
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over');
+      });
+      
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        item.classList.remove('drag-over');
+        
+        if (draggedItem && draggedItem !== item) {
+          const projectList = item.parentElement;
+          const items = Array.from(projectList.children);
+          const oldIndex = items.indexOf(draggedItem);
+          const newIndex = items.indexOf(item);
+          
+          if (oldIndex < newIndex) {
+            projectList.insertBefore(draggedItem, item.nextSibling);
+          } else {
+            projectList.insertBefore(draggedItem, item);
+          }
+          
+          projectList.querySelectorAll('.manager-project-item').forEach((item, index) => {
+            item.querySelector('.manager-sort-order').value = index + 1;
+          });
+        }
+      });
+    });
+    
+    const savePathInput = document.getElementById('savePath');
+    const clearSavePathBtn = document.getElementById('clearSavePath');
+    
+    clearSavePathBtn?.addEventListener('click', () => {
+      savePathInput.value = '';
+      fetch('/save-save-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          project_key: currentProject.value,
+          save_path: '',
+        }),
+      })
+      .then(() => {
+        location.reload();
+      })
+      .catch(error => {
+        console.error('清除路径失败:', error);
+        location.reload();
+      });
+    });
+    
+    savePathInput?.addEventListener('change', saveCurrentSavePath);
+    
+    function saveCurrentSavePath() {
+      const path = savePathInput.value.trim();
+      if (!path) return;
+      
+      fetch('/save-save-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          project_key: currentProject.value,
+          save_path: path,
+        }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status !== 'success') {
+          console.error('保存路径失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('保存路径失败:', error);
+      });
+    }
+
+    {% if selected_project.generator in ['tk_fill', 'fill_4399'] %}
+    function startFill() {
+      const btn = document.getElementById('tkFillMainBtn');
+      const topBtn = document.getElementById('tkFillBtn');
+      const status = document.getElementById('tkFillStatus');
+      const projectKey = document.getElementById('currentProject').value;
+      const is4399 = projectKey === '4399';
+
+      if (btn) btn.disabled = true;
+      if (topBtn) topBtn.disabled = true;
+      if (status) status.textContent = '填表中...';
+      if (btn) btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 填表中...';
+      lucide.createIcons();
+
+      const label = is4399 ? '4399' : 'TK';
+      const endpoint = is4399 ? '/fill-4399/start' : '/tk-fill/start';
+      const fillDesc = is4399 ? 'K/L/M' : 'O-Y';
+
+      const formData = new URLSearchParams();
+      fetch(endpoint, { method: 'POST', body: formData })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+          if (btn) btn.disabled = false;
+          if (btn) btn.innerHTML = '<i data-lucide="table-2"></i> 开始 ' + label + ' 填表';
+          if (topBtn) topBtn.disabled = false;
+          if (topBtn) topBtn.innerHTML = '<i data-lucide="table-2"></i> ' + label + ' 填表';
+          lucide.createIcons();
+          if (ok && data.status === 'success') {
+            if (status) status.textContent = data.message;
+            showToast(label + ' 填表已启动');
+            showMessages(
+              '<p>' + data.message + '</p>'
+              + '<p style="margin-top:6px;color:var(--muted);">只会填写 ' + fillDesc + ' 列；其他列不会被脚本写入。</p>',
+              'success'
+            );
+          } else {
+            if (status) status.textContent = data.message || '启动失败';
+            showToast(data.message || '启动失败', true);
+            showMessages('<p>' + (data.message || '启动失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          if (btn) btn.disabled = false;
+          if (btn) btn.innerHTML = '<i data-lucide="table-2"></i> 开始 ' + label + ' 填表';
+          if (topBtn) topBtn.disabled = false;
+          if (topBtn) topBtn.innerHTML = '<i data-lucide="table-2"></i> ' + label + ' 填表';
+          lucide.createIcons();
+          if (status) status.textContent = '启动失败: ' + err.message;
+          showToast('启动失败: ' + err.message, true);
+        });
+    }
+    {% endif %}
+
+    {% if selected_project.generator == 'huanta' %}
+    function runAutoQuote() {
+      const btn = document.getElementById('autoQuoteBtn');
+      const projectKey = document.getElementById('currentProject').value;
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
+      lucide.createIcons();
+
+      const messagesDiv = document.querySelector('.messages');
+      if (messagesDiv) messagesDiv.innerHTML = '';
+
+      const formData = new URLSearchParams();
+      formData.append('project', projectKey);
+      fetch('/auto-quote', { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+
+          if (data.status === 'success') {
+            const pre = document.createElement('pre');
+            pre.style.cssText = 'white-space: pre-wrap; font-size: 12px; line-height: 1.5; max-height: 400px; overflow-y: auto;';
+            pre.textContent = data.message;
+            showToast('自动报价完成！');
+            showMessages(pre.outerHTML, 'success');
+            loadQuoteHistory();
+          } else {
+            showToast('自动报价失败: ' + data.message, true);
+            showMessages('<p>' + data.message + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+
+    {% endif %}
+
+    {% if selected_project.generator == 'zhan_shuang' %}
+    function runZhanShuangMailQuote() {
+      const btn = document.getElementById('zhanShuangMailBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
+      lucide.createIcons();
+
+      fetch('/zhan-shuang/auto-quote', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="mail"></i> 邮件报价';
+          lucide.createIcons();
+          if (data.status === 'success') {
+            showToast('邮件报价完成！');
+            showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + data.message + '</pre>', 'success');
+          } else {
+            showToast(data.message || '报价失败', true);
+            showMessages('<p>' + (data.message || '报价失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="mail"></i> 邮件报价';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+
+    {% endif %}
+
+    {% if selected_project.generator == 'zhan_shuang_feishu' %}
+    function runZhanShuangFeishuQuote() {
+      const btns = ['zhanShuangFeishuBtn', 'zhanShuangFeishuMainBtn'];
+      const status = document.getElementById('zhanShuangFeishuStatus');
+      btns.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...'; }
+      });
+      if (status) status.textContent = '报价中...';
+      lucide.createIcons();
+
+      fetch('/zhan-shuang/feishu-quote', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          btns.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="message-square"></i> 飞书报价'; }
+          });
+          if (status) status.textContent = '';
+          lucide.createIcons();
+          if (data.status === 'success') {
+            showToast('飞书报价完成！');
+            showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + data.message + '</pre>', 'success');
+            loadQuoteHistory();
+          } else {
+            showToast(data.message || '报价失败', true);
+            showMessages('<p>' + (data.message || '报价失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btns.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="message-square"></i> 飞书报价'; }
+          });
+          if (status) status.textContent = '';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+    {% endif %}
+
+    {% if selected_project.generator == 'diezhi' %}
+    function loadDiezhiBatchInfo() {
+      const projectKey = document.getElementById('currentProject').value;
+      fetch('/diezhi/batch-info?project=' + encodeURIComponent(projectKey))
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            document.getElementById('lastBatch').textContent = data.last_batch ?? '--';
+            document.getElementById('nextBatch').textContent = data.next_batch ?? '无';
+
+            const batchNoInput = document.getElementById('diezhiBatchNo');
+            const overrideInput = document.getElementById('diezhiBatchOverride');
+
+            if (data.next_batch) {
+              batchNoInput.value = data.next_batch;
+              overrideInput.value = data.next_batch;
+            }
+          } else {
+            showToast('批次信息加载失败: ' + (data.message || '未知错误'), true);
+          }
+        })
+        .catch(err => {
+          showToast('批次信息加载失败: ' + err.message, true);
+        });
+    }
+
+    function runDiezhiQuote() {
+      const btn = document.getElementById('diezhiQuoteBtn');
+      const projectKey = document.getElementById('currentProject').value;
+      const overrideInput = document.getElementById('diezhiBatchOverride');
+      const batchNo = parseInt(overrideInput.value);
+      const quoteDate = document.getElementById('quoteDate').value;
+      const prices = getLanguagePrices();
+      const priceKeys = Object.keys(prices);
+      const price = priceKeys.length > 0 ? parseFloat(prices[priceKeys[0]]) : 0.32;
+
+      if (!batchNo || isNaN(batchNo)) {
+        showToast('请先刷新批次信息', true);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+
+      const payload = {
+        project: projectKey,
+        batch_no: batchNo,
+        quote_date: quoteDate,
+        price: price,
+      };
+
+      fetch('/diezhi/generate-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+        .then(response => response.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 生成报价单';
+          lucide.createIcons();
+
+          if (data.status === 'success') {
+            showToast('报价单已生成！');
+            showMessages(
+              '<p>批次 ' + batchNo + ' 报价单已生成: <span onclick="openFileInExcel(\'' + data.output_path.replace(/\\/g, '\\\\') + '\')" style="cursor:pointer;text-decoration:underline;color:#10b981;">' + data.output_name + '</span></p>'
+              + '<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:200px;overflow-y:auto;margin-top:6px;">' + (data.message || '') + '</pre>',
+              'success'
+            );
+            loadQuoteHistory();
+            loadDiezhiBatchInfo();
+          } else {
+            showToast('生成失败: ' + (data.message || '未知错误'), true);
+            showMessages('<p>' + (data.message || '生成失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 生成报价单';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loadDiezhiBatchInfo();
+    });
+    {% endif %}
+    function showMessages(html, category) {
+      let messagesDiv = document.querySelector('.messages');
+      if (!messagesDiv) {
+        const topbar = document.querySelector('.topbar');
+        messagesDiv = document.createElement('div');
+        messagesDiv.className = 'messages';
+        topbar.after(messagesDiv);
+      }
+      messagesDiv.innerHTML = '<div class="message ' + category + '"><span>' + html + '</span></div>';
+    }
+
+    // ===== 结算模式 =====
+    const settlePanel = document.getElementById('settlePanel');
+    const formPanel = document.querySelector('.form-panel');
+    const quoteModeTab = document.getElementById('quoteModeTab');
+    const settleModeTab = document.getElementById('settleModeTab');
+    const topbarActions = document.getElementById('topbarActions');
+    const settleTopbarActions = document.getElementById('settleTopbarActions');
+    const quoteHistoryPanel = document.getElementById('quoteHistoryPanel');
+    const settleHistoryPanel = document.getElementById('settleHistoryPanel');
+
+    function switchMode(mode) {
+      document.getElementById('quoteAllPanel').style.display = 'none';
+      document.getElementById('settlementWorkbenchPanel').style.display = 'none';
+      var wbftp = document.getElementById('wbFileTreePanel');
+      if (wbftp) wbftp.style.display = 'none';
+      document.getElementById('quoteModeTab').style.display = '';
+      document.getElementById('settleModeTab').style.display = '';
+      // clear sidebar workspace-link active
+      document.querySelectorAll('.workspace-link').forEach(function(el) { el.classList.remove('active'); });
+      if (mode === 'settle') {
+        formPanel.style.display = 'none';
+        settlePanel.style.display = '';
+        quoteModeTab.classList.remove('active');
+        settleModeTab.classList.add('active');
+        topbarActions.style.display = 'none';
+        settleTopbarActions.style.display = 'flex';
+        if (quoteHistoryPanel) quoteHistoryPanel.style.display = 'none';
+        if (settleHistoryPanel) settleHistoryPanel.style.display = '';
+        document.getElementById('settleProjectName').textContent =
+          '项目：' + document.getElementById('projectSelect').selectedOptions[0].textContent;
+
+        const settleConfig = getSettleConfig();
+        const settleContent = document.getElementById('settleContent');
+        const settleUnsupported = document.getElementById('settleUnsupported');
+        if (settleConfig) {
+          settleContent.style.display = '';
+          settleUnsupported.style.display = 'none';
+          // 先初始化年月选择器（缓存恢复需要读取年月值）
+          initSettleMonthPicker();
+          initMultiMonthSettle();
+          // 尝试恢复缓存的预览数据
+          var _restored = restoreSettlePreviewCache();
+          if (!_restored) {
+            document.getElementById('settleStats').style.display = 'none';
+            document.getElementById('settleTableWrap').style.display = 'none';
+            document.getElementById('settleResults').innerHTML = '';
+            document.getElementById('generateSettleBtn').disabled = true;
+          }
+          const isMultiMonthSettle = settleConfig.multiMonth;
+          document.getElementById('multiMonthSettleBox').style.display = isMultiMonthSettle ? '' : 'none';
+          document.getElementById('settleMonth').style.display = isMultiMonthSettle ? 'none' : '';
+          if (isMultiMonthSettle && document.querySelectorAll('#monthSettleCheckboxes input[type="checkbox"]:checked').length === 0) {
+            const now = new Date();
+            document.querySelector('#monthSettleCheckboxes input[value="' + (now.getMonth() === 0 ? 12 : now.getMonth()) + '"]').checked = true;
+          }
+          var y = document.getElementById('settleYear').value;
+          var ms = getSettleMonths();
+          var m = ms.length > 0 ? ms.join(',') : document.getElementById('settleMonth').value;
+          var pk = document.getElementById('currentProject').value;
+          var isBillProj = pk === 'umamusume' || pk === 'bang2' || pk === 'hbr';
+          var isTk = pk === 'tk';
+          var isPerfectWorld = pk === 'huanta' || pk === 'yihuan_nei' || pk === 'yihuan_faxing';
+          document.getElementById('batchSettleBtn').style.display = isPerfectWorld ? '' : 'none';
+          document.getElementById('pwNotifyTextBtn').style.display = isPerfectWorld ? '' : 'none';
+          document.getElementById('sealedSettleBtn').style.display = isBillProj ? '' : 'none';
+          document.getElementById('sealedSettleBtn').disabled = true;
+          if (!_restored) {
+            document.getElementById('invoiceRequestBox').style.display = 'none';
+          }
+
+          if (isTk) {
+            document.getElementById('previewBtn').style.display = 'none';
+            document.getElementById('generateSettleBtn').style.display = 'none';
+            document.getElementById('batchSettleBtn').style.display = 'none';
+            document.getElementById('pwNotifyTextBtn').style.display = 'none';
+            document.getElementById('sealedSettleBtn').style.display = 'none';
+            document.getElementById('tkCopyOrderlistBtn').style.display = '';
+            document.getElementById('tkGenerateBtn').style.display = '';
+            document.getElementById('settleRateBox').style.display = 'none';
+            if (!_restored) {
+              document.getElementById('settleStats').style.display = 'none';
+              document.getElementById('settleTableWrap').style.display = 'none';
+              document.getElementById('emptyState').style.display = 'none';
+            }
+            lucide.createIcons();
+            loadSettleHistory(y, m, pk);
+          } else {
+            var is4399Settle = pk === '4399';
+            document.getElementById('settleRateBox').style.display = is4399Settle ? '' : 'none';
+            document.getElementById('previewBtn').style.display = '';
+            document.getElementById('generateSettleBtn').style.display = '';
+            document.getElementById('tkCopyOrderlistBtn').style.display = 'none';
+            document.getElementById('tkGenerateBtn').style.display = 'none';
+            document.getElementById('genBtnText').textContent = isBillProj ? '生成对账单' : '生成结算文件';
+            if (!_restored) {
+              document.getElementById('generateSettleBtn').disabled = true;
+            }
+            loadSettleHistory(y, m, pk);
+            if (isBillProj) {
+              checkExistingBill(y, m, pk);
+              loadInvoiceRequest(y, m, pk);
+            } else if (settleConfig.diezhi) {
+              loadDiezhiInvoice(y, m);
+            }
+          }
+        } else {
+          settleContent.style.display = 'none';
+          settleUnsupported.style.display = 'block';
+        }
+      } else {
+        formPanel.style.display = '';
+        settlePanel.style.display = 'none';
+        quoteModeTab.classList.add('active');
+        settleModeTab.classList.remove('active');
+        topbarActions.style.display = 'flex';
+        settleTopbarActions.style.display = 'none';
+        if (quoteHistoryPanel) quoteHistoryPanel.style.display = '';
+        if (settleHistoryPanel) settleHistoryPanel.style.display = 'none';
+        loadQuoteHistory();
+      }
+    }
+
+    // 结算项目配置：key → API 路径
+    const SETTLEMENT_PROJECTS = {
+        'huanta': { preview: '/api/settlement/preview', generate: '/api/settlement/generate' },
+        'zhan_shuang': { preview: '/api/settlement_zhan_shuang/preview', generate: '/api/settlement_zhan_shuang/generate' },
+        'zhan_shuang_faxing': { preview: '/api/settlement_zhan_shuang_faxing/preview', generate: '/api/settlement_zhan_shuang_faxing/generate', multiMonth: true },
+        'yihuan_nei': { preview: '/api/settlement_yh_games/preview', generate: '/api/settlement_yh_games/generate' },
+        'yihuan_faxing': { preview: '/api/settlement_yh_publish/preview', generate: '/api/settlement_yh_publish/generate' },
+        'umamusume': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
+        'bang2': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
+        'hbr': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
+        'liandishenkong': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
+        'shining_nikki': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
+        'niki_xinzuo': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
+        'tk': { preview: null, generate: '/api/settlement/tk/generate', bill: 'tk' },
+        '4399': { preview: '/api/settlement_4399/preview', generate: '/api/settlement_4399/generate', bill: '4399' },
+    };
+
+    function getSettleConfig() {
+        return SETTLEMENT_PROJECTS[document.getElementById('currentProject').value];
+    }
+
+    function _settleCacheKey() {
+      var proj = document.getElementById('currentProject').value;
+      var year = document.getElementById('settleYear').value;
+      var month = document.getElementById('settleMonth').value;
+      return 'idx_pv_' + proj + '_' + year + '_' + month;
+    }
+
+    function saveSettlePreviewCache() {
+      try {
+        var state = {
+          statsDisplay: document.getElementById('settleStats').style.display,
+          countText: document.getElementById('settleCount').textContent,
+          totalText: document.getElementById('settleTotal').textContent,
+          tableWrapDisplay: document.getElementById('settleTableWrap').style.display,
+          tableHeadHTML: document.querySelector('#settleTableWrap thead tr')?.innerHTML || '',
+          tableBodyHTML: document.getElementById('settlePreviewBody').innerHTML,
+          resultHTML: document.getElementById('settleResults').innerHTML,
+          genBtnDisabled: document.getElementById('generateSettleBtn').disabled,
+          invoiceBoxDisplay: document.getElementById('invoiceRequestBox').style.display,
+          invoiceText: document.getElementById('invoiceRequestText').textContent,
+          proj: document.getElementById('currentProject').value,
+        };
+        localStorage.setItem(_settleCacheKey(), JSON.stringify(state));
+      } catch(e) {}
+    }
+
+    function restoreSettlePreviewCache() {
+      try {
+        var saved = localStorage.getItem(_settleCacheKey());
+        if (!saved) return false;
+        var state = JSON.parse(saved);
+        if (state.proj && state.proj !== document.getElementById('currentProject').value) return false;
+        document.getElementById('settleStats').style.display = state.statsDisplay;
+        document.getElementById('settleCount').textContent = state.countText;
+        document.getElementById('settleTotal').textContent = state.totalText;
+        document.getElementById('settleTableWrap').style.display = state.tableWrapDisplay;
+        if (state.tableHeadHTML) document.querySelector('#settleTableWrap thead tr').innerHTML = state.tableHeadHTML;
+        document.getElementById('settlePreviewBody').innerHTML = state.tableBodyHTML;
+        document.getElementById('settleResults').innerHTML = state.resultHTML;
+        document.getElementById('generateSettleBtn').disabled = state.genBtnDisabled;
+        if (state.invoiceBoxDisplay) {
+          document.getElementById('invoiceRequestBox').style.display = state.invoiceBoxDisplay;
+          document.getElementById('invoiceRequestText').textContent = state.invoiceText;
+        }
+        lucide.createIcons();
+        return true;
+      } catch(e) { return false; }
+    }
+
+    function initSettleMonthPicker() {
+      const yearSel = document.getElementById('settleYear');
+      const monthSel = document.getElementById('settleMonth');
+      if (yearSel.options.length > 0) return;
+      const now = new Date();
+      for (let y = 2025; y <= now.getFullYear() + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y; opt.textContent = y + '年';
+        if (y === (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())) opt.selected = true;
+        yearSel.appendChild(opt);
+      }
+      for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m + '月';
+        if (m === (now.getMonth() === 0 ? 12 : now.getMonth())) opt.selected = true;
+        monthSel.appendChild(opt);
+      }
+
+      // 年月切换时自动刷新结算文件列表
+      yearSel.onchange = function() { refreshSettleSidebar(); };
+      monthSel.onchange = function() { refreshSettleSidebar(); };
+    }
+
+    function refreshSettleSidebar() {
+      var y = document.getElementById('settleYear').value;
+      var ms = getSettleMonths();
+      if (ms.length === 0) return;
+      var m = ms[ms.length - 1];
+      var pk = document.getElementById('currentProject').value;
+      if (y && m) {
+        loadSettleHistory(y, m, pk);
+        if (pk === 'umamusume' || pk === 'bang2' || pk === 'hbr') {
+          checkExistingBill(y, ms[0], pk);
+          loadInvoiceRequest(y, ms[0], pk);
+        } else if (pk === 'liandishenkong' || pk === 'shining_nikki' || pk === 'niki_xinzuo') {
+          loadDiezhiInvoice(y, m);
+        } else {
+          document.getElementById('invoiceRequestBox').style.display = 'none';
+        }
+      }
+    }
+
+    function getSettleMonths() {
+      const settleConfig = getSettleConfig();
+      if (settleConfig && settleConfig.multiMonth) {
+        const cbs = document.querySelectorAll('#monthSettleCheckboxes input[type="checkbox"]:checked');
+        const vals = Array.from(cbs).map(cb => parseInt(cb.value)).sort(function(a, b) { return a - b; });
+        return vals.length > 0 ? vals : [parseInt(document.getElementById('settleMonth').value)];
+      }
+      return [parseInt(document.getElementById('settleMonth').value)];
+    }
+
+    function initMultiMonthSettle() {
+      const container = document.getElementById('monthSettleCheckboxes');
+      if (container.children.length > 0) return;
+      for (let m = 1; m <= 12; m++) {
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'display:flex;align-items:center;gap:2px;font-size:11px;cursor:pointer;padding:2px 5px;border:1px solid var(--border-subtle);border-radius:3px;user-select:none;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = m;
+        cb.addEventListener('change', function() {
+          const cbs = container.querySelectorAll('input[type="checkbox"]');
+          const checked = Array.from(cbs).filter(function(cb) { return cb.checked; });
+          const values = checked.map(function(cb) { return parseInt(cb.value); }).sort(function(a, b) { return a - b; });
+          if (values.length > 3) { cbs[values[values.length - 1] - 1].checked = false; return; }
+          if (values.length >= 2) {
+            for (let i = 0; i < values.length - 1; i++) {
+              if (values[i + 1] - values[i] !== 1) { cbs[values[values.length - 1] - 1].checked = false; return; }
+            }
+          }
+          refreshSettleSidebar();
+        });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(m + '月'));
+        container.appendChild(lbl);
+      }
+    }
+
+    async function loadSettlePreview() {
+      const year = document.getElementById('settleYear').value;
+      const months = getSettleMonths();
+      if (months.length === 0) { showToast('请选择月份', true); return; }
+      const previewBtn = document.getElementById('previewBtn');
+      const genBtn = document.getElementById('generateSettleBtn');
+      const projKey = document.getElementById('currentProject').value;
+      const settleConfig = getSettleConfig();
+      if (!settleConfig) { showToast('该项目暂不支持结算', true); return; }
+      const isBillProj = settleConfig.bill;
+      const isMultiMonth = settleConfig.multiMonth;
+
+      previewBtn.disabled = true;
+      previewBtn.innerHTML = '<i data-lucide="loader" class="loading"></i> 读取中...';
+      lucide.createIcons();
+      genBtn.disabled = true;
+
+      try {
+        var apiUrl;
+        if (isMultiMonth) {
+          apiUrl = settleConfig.preview + '?year=' + year + '&months=' + months.join(',');
+        } else {
+          apiUrl = settleConfig.preview + '?year=' + year + '&month=' + months[0];
+        }
+        if (isBillProj) apiUrl += '&project=' + encodeURIComponent(projKey);
+        const resp = await fetch(apiUrl);
+        const result = await resp.json();
+        if (result.status !== 'success') {
+            if (result.is_permission_error) {
+                showToast('飞书表格访问失败，请检查表格是否已开启API访问权限', true);
+            } else {
+                showToast(result.message || '读取失败', true);
+            }
+            loadSettleHistory(year, months[months.length - 1], projKey);
+            return;
+        }
+        if (projKey === '4399') {
+          if (result.exchange_rate) {
+            document.getElementById('settleExchangeRate').value = result.exchange_rate;
+          }
+          const projNames = Object.keys(result.data);
+          if (projNames.length === 0) {
+            document.getElementById('settleStats').style.display = 'none';
+            document.getElementById('settleTableWrap').style.display = 'none';
+            document.getElementById('generateSettleBtn').disabled = true;
+            saveSettlePreviewCache();
+            showToast(year + '年' + months[0] + '月没有交付记录', true);
+            loadSettleHistory(year, months[0], projKey);
+            return;
+          }
+          let totalCount = 0, totalWords = 0;
+          projNames.forEach(function(n) { totalCount += result.data[n].count; totalWords += result.data[n].total_words; });
+          document.getElementById('settleCount').textContent = totalCount;
+          document.getElementById('settleTotal').textContent = (totalWords * 0.52).toFixed(2);
+          document.getElementById('settleStats').style.display = 'flex';
+          document.getElementById('settleTableWrap').style.display = '';
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th><th>项目</th><th>编号</th><th>需求名</th><th style="width:90px;">交稿日期</th><th style="width:80px;" class="r">结算字数</th><th style="width:80px;" class="r">费用 CNY</th>';
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          projNames.forEach(function(pn) {
+            var p = result.data[pn];
+            p.records.forEach(function(r, i) {
+              const tr = document.createElement('tr');
+              if (i === 0) tr.style.borderTop = '2px solid var(--primary)';
+              tr.innerHTML = '<td>' + (i+1) + '</td><td>' + escHtml(pn) + '</td><td>' + escHtml(p.code) + '</td><td>' + escHtml(r.req_name) + '</td><td>' + escHtml(r.deliv_date) + '</td><td class="r">' + (r.word_count||0).toLocaleString() + '</td><td class="r">' + ((r.word_count||0)*0.52).toFixed(2) + '</td>';
+              tbody.appendChild(tr);
+            });
+          });
+          genBtn.disabled = false;
+          loadSettleHistory(year, months[0], projKey);
+          saveSettlePreviewCache();
+          return;
+        }
+        if (result.data.length === 0) {
+          document.getElementById('settleStats').style.display = 'none';
+          document.getElementById('settleTableWrap').style.display = 'none';
+          document.getElementById('generateSettleBtn').disabled = true;
+          saveSettlePreviewCache();
+          showToast(year + '年' + (isMultiMonth ? months.join('&') : months[0]) + '月没有交付记录', true);
+          loadSettleHistory(year, months[months.length - 1], projKey);
+          if (isBillProj) { checkExistingBill(year, months[0], projKey); loadInvoiceRequest(year, months[0], projKey); }
+          return;
+        }
+
+        document.getElementById('settleStats').style.display = 'flex';
+        document.getElementById('settleTableWrap').style.display = '';
+
+        if (isBillProj) {
+          document.getElementById('settleCount').textContent = result.count;
+          document.getElementById('settleTotal').textContent = (result.total_amount || 0).toFixed(2);
+          // 动态切换表头
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>文件名</th>'
+            + '<th>需求名</th>'
+            + '<th style="width:80px;" class="r">字数</th>'
+            + '<th style="width:90px;">报价日期</th>'
+            + '<th style="width:90px;">交付日期</th>'
+            + '<th style="width:90px;" class="r">金额</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          var mamianTotal = 0;
+          result.data.forEach(function(r, i) {
+            mamianTotal += r.total_price || 0;
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (i+1) + '</td>'
+              + '<td title="' + escHtml(r.filename || '') + '">' + escHtml(r.filename || '') + '</td>'
+              + '<td>' + escHtml(r.req_name || '') + '</td>'
+              + '<td class="r">' + (r.word_count || 0).toLocaleString() + '</td>'
+              + '<td>' + escHtml(r.quote_date || '') + '</td>'
+              + '<td>' + escHtml(r.delivery_date || '') + '</td>'
+              + '<td class="r">' + (r.total_price || 0).toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+          });
+          // 总金额行
+          var totalTr = document.createElement('tr');
+          totalTr.style.fontWeight = '600';
+          totalTr.style.borderTop = '2px solid var(--line)';
+          totalTr.innerHTML = '<td colspan="2">合计</td><td></td><td></td><td></td><td></td>'
+            + '<td class="r">' + mamianTotal.toFixed(2) + '</td>';
+          tbody.appendChild(totalTr);
+        } else if (projKey === 'zhan_shuang') {
+          const total = result.data.reduce(function(s, r) { return s + (parseFloat(r.word_count) || 0); }, 0);
+          const pretaxTotal = total * 0.64;
+          document.getElementById('settleCount').textContent = result.data.length;
+          document.getElementById('settleTotal').textContent = pretaxTotal.toFixed(2) + ' / ' + (pretaxTotal * 1.06).toFixed(2);
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>委托需求</th>'
+            + '<th style="width:90px;">交付日期</th>'
+            + '<th style="width:80px;" class="r">字数</th>'
+            + '<th style="width:55px;" class="r">单价</th>'
+            + '<th style="width:90px;" class="r">税前金额</th>'
+            + '<th style="width:90px;" class="r">含税金额</th>'
+            + '<th>报价单文件名</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          result.data.forEach(function(r, i) {
+            const dd = new Date((r.deliv_date - 25569) * 86400000);
+            const ddStr = dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+            const amount = (parseFloat(r.word_count) || 0) * 0.64;
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (i+1) + '</td>'
+              + '<td title="' + escHtml(r.req_name) + '">' + escHtml(r.req_name) + '</td>'
+              + '<td>' + ddStr + '</td>'
+              + '<td class="r">' + (r.word_count != null ? parseFloat(r.word_count).toLocaleString() : '') + '</td>'
+              + '<td class="r">0.64</td>'
+              + '<td class="r">' + amount.toFixed(2) + '</td>'
+              + '<td class="r">' + (amount * 1.06).toFixed(2) + '</td>'
+              + '<td title="' + escHtml(r.file_name || '') + '">' + escHtml(r.file_name || '') + '</td>';
+            tbody.appendChild(tr);
+          });
+        } else if (projKey === 'zhan_shuang_faxing') {
+          document.getElementById('settleCount').textContent = result.data.length;
+          document.getElementById('settleTotal').textContent = (result.total_amount_pretax || 0).toFixed(2) + ' / ' + (result.total_amount || 0).toFixed(2);
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>报价单文件名</th>'
+            + '<th>语言</th>'
+            + '<th style="width:90px;">委托日</th>'
+            + '<th style="width:90px;">交付日</th>'
+            + '<th style="width:80px;" class="r">结算字数</th>'
+            + '<th style="width:55px;" class="r">单价</th>'
+            + '<th style="width:90px;" class="r">税前金额</th>'
+            + '<th style="width:90px;" class="r">含税金额</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          result.data.forEach(function(r, i) {
+            const ed = r.entrust_date ? new Date((r.entrust_date - 25569) * 86400000) : null;
+            const edStr = ed ? ed.getFullYear() + '-' + String(ed.getMonth()+1).padStart(2,'0') + '-' + String(ed.getDate()).padStart(2,'0') : '';
+            const dd = new Date((r.deliv_date - 25569) * 86400000);
+            const ddStr = dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+            const amount = (parseFloat(r.word_count) || 0) * (parseFloat(r.unit_price) || 0.64);
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (i+1) + '</td>'
+              + '<td title="' + escHtml(r.file_name || '') + '">' + escHtml(r.file_name || '') + '</td>'
+              + '<td>' + escHtml(r.language || '') + '</td>'
+              + '<td>' + edStr + '</td>'
+              + '<td>' + ddStr + '</td>'
+              + '<td class="r">' + (r.word_count != null ? parseFloat(r.word_count).toLocaleString() : '') + '</td>'
+              + '<td class="r">' + (parseFloat(r.unit_price) || 0.64).toFixed(2) + '</td>'
+              + '<td class="r">' + amount.toFixed(2) + '</td>'
+              + '<td class="r">' + (amount * 1.06).toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+          });
+        } else if (settleConfig.diezhi) {
+          // 叠纸3项目统一预览
+          document.getElementById('settleCount').textContent = '';
+          document.getElementById('settleTotal').textContent = (result.total_amount || 0).toFixed(2);
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>报价单文件名</th>'
+            + '<th style="width:100px;">交付日期</th>'
+            + '<th style="width:80px;" class="r">总字数</th>'
+            + '<th style="width:90px;" class="r">税前金额</th>'
+            + '<th style="width:90px;" class="r">税后金额</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          var globalIdx = 0;
+          var projectOrder = ['liandishenkong', 'shining_nikki', 'niki_xinzuo'];
+          projectOrder.forEach(function(key) {
+            var proj = result.data[key];
+            if (!proj) return;
+            var headerTr = document.createElement('tr');
+            headerTr.style.background = 'var(--bg-input)';
+            headerTr.style.fontWeight = '600';
+            headerTr.innerHTML = '<td></td>'
+              + '<td colspan="2">' + escHtml(proj.display) + ' (' + (proj.quotes ? proj.quotes.length : 0) + '份报价单)</td>'
+              + '<td class="r">' + (proj.total_words || 0).toLocaleString() + '</td>'
+              + '<td class="r">' + (proj.total_amount_pretax || 0).toFixed(2) + '</td>'
+              + '<td class="r">' + (proj.total_amount || 0).toFixed(2) + '</td>';
+            tbody.appendChild(headerTr);
+            if (proj.quotes) {
+              proj.quotes.forEach(function(q) {
+                globalIdx++;
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + globalIdx + '</td>'
+                  + '<td title="' + escHtml(q.file_name) + '">' + escHtml(q.file_name) + '</td>'
+                  + '<td>' + escHtml(q.delivery_date) + '</td>'
+                  + '<td class="r">' + (q.total_words || 0).toLocaleString() + '</td>'
+                  + '<td class="r">' + (q.total_amount_pretax || 0).toFixed(2) + '</td>'
+                  + '<td class="r">' + (q.total_amount || 0).toFixed(2) + '</td>';
+                tbody.appendChild(tr);
+              });
+            }
+          });
+        } else {
+          var pwTotal = result.data.reduce(function(s, r) { return s + (parseFloat(r.amount) || 0); }, 0);
+          document.getElementById('settleCount').textContent = result.data.length;
+          document.getElementById('settleTotal').textContent = pwTotal.toFixed(2);
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>委托文本</th>'
+            + '<th>Task No</th>'
+            + '<th>需求内容</th>'
+            + '<th style="width:90px;">交付日期</th>'
+            + '<th style="width:80px;" class="r">计费字数</th>'
+            + '<th style="width:55px;" class="r">单价</th>'
+            + '<th style="width:90px;" class="r">费用小计</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          result.data.forEach(function(r, i) {
+            const dd = new Date((r.deliv_date - 25569) * 86400000);
+            const ddStr = dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (i+1) + '</td>'
+              + '<td title="' + escHtml(r.req_name) + '">' + escHtml(r.req_name) + '</td>'
+              + '<td>' + escHtml(r.task_no) + '</td>'
+              + '<td>' + escHtml(r.content) + '</td>'
+              + '<td>' + ddStr + '</td>'
+              + '<td class="r">' + (r.billable_words != null ? r.billable_words : '') + '</td>'
+              + '<td class="r">0.64</td>'
+              + '<td class="r">' + (r.amount != null ? parseFloat(r.amount).toFixed(2) : '') + '</td>';
+            tbody.appendChild(tr);
+          });
+        }
+        genBtn.disabled = false;
+
+        // 加载结算文件列表 + 检查已有对账单
+        loadSettleHistory(year, months[months.length - 1], projKey);
+        // 马娘：加载已有开票请求 + 检查是否已有对账单
+        if (isBillProj) {
+          checkExistingBill(year, months[0], projKey);
+          loadInvoiceRequest(year, months[0]);
+        } else if (settleConfig.diezhi) {
+          loadDiezhiInvoice(year, months[0]);
+        } else {
+          document.getElementById('invoiceRequestBox').style.display = 'none';
+        }
+        saveSettlePreviewCache();
+      } catch(e) { showToast('网络错误: ' + e.message, true); }
+      finally {
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = '<i data-lucide="search"></i> 预览';
+        lucide.createIcons();
+      }
+    }
+
+    async function generateSettlement() {
+      const year = document.getElementById('settleYear').value;
+      const months = getSettleMonths();
+      if (months.length === 0) { showToast('请选择月份', true); return; }
+      const genBtn = document.getElementById('generateSettleBtn');
+      const projKey = document.getElementById('currentProject').value;
+      const settleConfig = getSettleConfig();
+      if (!settleConfig) { showToast('该项目暂不支持结算', true); return; }
+      const isBillProj = settleConfig.bill;
+      const isMultiMonth = settleConfig.multiMonth;
+      const is4399 = projKey === '4399';
+
+      const monthLabel = isMultiMonth ? months.join('&') : months[0];
+      const label = isBillProj ? '账单' : (projKey === 'zhan_shuang' ? '结算单' : '结算单和验收单');
+      if (!confirm('确认生成 ' + year + '年' + monthLabel + '月 的' + label + '？')) return;
+
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+
+      try {
+        var reqBody;
+        if (isMultiMonth) {
+          reqBody = {year: parseInt(year), months: months};
+        } else if (is4399) {
+          var rate = parseFloat(document.getElementById('settleExchangeRate').value) || 0;
+          if (rate <= 0) { showToast('请输入有效汇率', true); genBtn.disabled = false; genBtn.innerHTML = '<i data-lucide="sparkles"></i> <span id="genBtnText">生成结算文件</span>'; lucide.createIcons(); return; }
+          reqBody = {year: parseInt(year), month: parseInt(months[0]), exchange_rate: rate};
+        } else {
+          reqBody = {year: parseInt(year), month: parseInt(months[0])};
+        }
+        if (isBillProj) reqBody.project = projKey;
+        const resp = await fetch(settleConfig.generate, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(reqBody),
+        });
+        const result = await resp.json();
+        if (result.status !== 'success') { showToast(result.message || '生成失败', true); return; }
+
+        if (is4399) {
+          showToast(result.message || '生成完成');
+          var resultsHtml4399 = '';
+          (result.files || []).forEach(function(f) {
+            var xlsxPath = escHtml(f.xlsx.path).replace(/\\/g, '\\\\');
+            var settlePdfPath = escHtml(f.settlement_pdf.path).replace(/\\/g, '\\\\');
+            var invPdfPath = escHtml(f.invoice_pdf.path).replace(/\\/g, '\\\\');
+            resultsHtml4399 += '<div style="margin-bottom:8px;padding:6px 8px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:4px;">';
+            resultsHtml4399 += '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">' + escHtml(f.project) + ' (USD ' + (f.usd_amount||0).toFixed(2) + ')</div>';
+            resultsHtml4399 += '<span class="settle-result-card" onclick="openSettleFile(\'' + xlsxPath + '\')" style="cursor:pointer;font-size:11px;"><i data-lucide="file-text" style="width:14px;height:14px;color:#217346;"></i> ' + escHtml(f.xlsx.name) + '</span> ';
+            resultsHtml4399 += '<span class="settle-result-card" onclick="openSettleFile(\'' + settlePdfPath + '\')" style="cursor:pointer;font-size:11px;"><i data-lucide="file-text" style="width:14px;height:14px;color:#c0392b;"></i> ' + escHtml(f.settlement_pdf.name) + '</span> ';
+            resultsHtml4399 += '<span class="settle-result-card" onclick="openSettleFile(\'' + invPdfPath + '\')" style="cursor:pointer;font-size:11px;"><i data-lucide="file-text" style="width:14px;height:14px;color:#185abd;"></i> ' + escHtml(f.invoice_pdf.name) + '</span>';
+            resultsHtml4399 += '</div>';
+          });
+          document.getElementById('settleResults').innerHTML = resultsHtml4399 + document.getElementById('settleResults').innerHTML;
+          showSettleSummary(result.table1, result.table2);
+          loadSettleHistory(year, months[months.length - 1], projKey);
+          lucide.createIcons();
+        } else if (isBillProj && result.file) {
+          showToast('已生成 ' + result.count + ' 条记录的账单');
+          var filePath = escHtml(result.file.path).replace(/\\/g, '\\\\');
+          document.getElementById('settleResults').innerHTML =
+            '<span class="settle-result-card" onclick="openSettleFile(\'' + filePath + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217346;"></i>' + escHtml(result.file.name) + '</span>'
+            + document.getElementById('settleResults').innerHTML;
+          // 启用盖章按钮
+          document.getElementById('sealedSettleBtn').disabled = false;
+          document.getElementById('sealedSettleBtn').dataset.year = year;
+          document.getElementById('sealedSettleBtn').dataset.month = months[0];
+          // 显示开票请求
+          if (result.invoice_text) {
+            showInvoiceRequest(result.invoice_text);
+          }
+          // 刷新结算文件列表
+          loadSettleHistory(year, months[months.length - 1], projKey);
+          lucide.createIcons();
+        } else if (settleConfig.diezhi) {
+          showToast('已生成3个项目结算单');
+          var resultsHtml = '';
+          if (result.files) {
+            result.files.forEach(function(f) {
+              var fp = escHtml(f.path).replace(/\\/g, '\\\\');
+              resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + fp + '\')" style="cursor:pointer;">'
+                + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217346;"></i>' + escHtml(f.name) + '</span>';
+            });
+          }
+          document.getElementById('settleResults').innerHTML = resultsHtml
+            + document.getElementById('settleResults').innerHTML;
+          if (result.invoice) {
+            showInvoiceRequest(result.invoice);
+          }
+          loadSettleHistory(year, months[months.length - 1], projKey);
+          lucide.createIcons();
+        } else {
+          showToast('已生成 ' + result.count + ' 条记录');
+          var resultsHtml = '';
+          if (result.excel) {
+            var excelPath = escHtml(result.excel.path).replace(/\\/g, '\\\\');
+            resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + excelPath + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217346;"></i>' + escHtml(result.excel.name) + '</span>';
+          }
+          if (result.docx) {
+            var docxPath = escHtml(result.docx.path).replace(/\\/g, '\\\\');
+            resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + docxPath + '\')" style="cursor:pointer;">'
+              + '<span class="icon-word">&#x1F4DD;</span>' + escHtml(result.docx.name) + '</span>';
+          }
+          document.getElementById('settleResults').innerHTML = resultsHtml
+            + document.getElementById('settleResults').innerHTML;
+          loadSettleHistory(year, months[months.length - 1], projKey);
+        }
+        lucide.createIcons();
+      } catch(e) { showToast('网络错误: ' + e.message, true); }
+      finally {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i data-lucide="sparkles"></i> <span id="genBtnText">' + (isBillProj ? '生成对账单' : '生成结算文件') + '</span>';
+        lucide.createIcons();
+      }
+    }
+
+    async function batchGeneratePerfectWorld() {
+      const year = document.getElementById('settleYear').value;
+      const month = document.getElementById('settleMonth').value;
+      const btn = document.getElementById('batchSettleBtn');
+      if (!confirm('确认一键生成 ' + year + '年' + month + '月 完美世界三个项目的结算单和验收单？')) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+
+      try {
+        const resp = await fetch('/api/settlement/batch-perfect-world', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({year: parseInt(year), month: parseInt(month)}),
+        });
+        const result = await resp.json();
+        if (result.status !== 'success') { showToast(result.message || '生成失败', true); return; }
+
+        var htmlParts = [];
+        var totalCount = 0;
+        for (var name of ['幻塔', '异环游戏内', '异环发行']) {
+          var r = result.results[name];
+          if (!r) continue;
+          if (r.status === 'empty') {
+            htmlParts.push('<div class="settle-result-card" style="opacity:0.5;cursor:default;">'
+              + '<i data-lucide="minus-circle" style="width:16px;height:16px;color:var(--muted);"></i> '
+              + escHtml(name) + ': ' + escHtml(r.message) + '</div>');
+          } else if (r.status === 'error') {
+            htmlParts.push('<div class="settle-result-card" style="cursor:default;">'
+              + '<i data-lucide="x-circle" style="width:16px;height:16px;color:#c0392b;"></i> '
+              + escHtml(name) + ': ' + escHtml(r.message) + '</div>');
+          } else {
+            totalCount += r.count;
+            var ep = escHtml(r.excel.path).replace(/\\/g, '\\\\');
+            var dp = escHtml(r.docx.path).replace(/\\/g, '\\\\');
+            htmlParts.push('<div style="margin-bottom:6px;"><strong>' + escHtml(name) + '</strong> <span style="color:var(--muted);font-size:11px;">' + r.count + '条</span></div>'
+              + '<span class="settle-result-card" onclick="openSettleFile(\'' + ep + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217346;"></i>' + escHtml(r.excel.name) + '</span>'
+              + '<span class="settle-result-card" onclick="openSettleFile(\'' + dp + '\')" style="cursor:pointer;">'
+              + '<span style="font-size:14px;">&#x1F4DD;</span>' + escHtml(r.docx.name) + '</span>');
+          }
+        }
+        document.getElementById('settleResults').innerHTML = htmlParts.join('') + document.getElementById('settleResults').innerHTML;
+        showToast('已生成 ' + totalCount + ' 条记录（三个项目）');
+        loadSettleHistory(year, month, document.getElementById('currentProject').value);
+        lucide.createIcons();
+      } catch(e) { showToast('网络错误: ' + e.message, true); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="zap"></i> 一键生成三个项目';
+        lucide.createIcons();
+      }
+    }
+
+    async function generatePWNotifyText() {
+      const year = document.getElementById('settleYear').value;
+      const month = document.getElementById('settleMonth').value;
+      const btn = document.getElementById('pwNotifyTextBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+      try {
+        const resp = await fetch('/api/settlement/pw-notification-text?year=' + year + '&month=' + month);
+        const result = await resp.json();
+        if (result.status !== 'success') { showToast(result.message || '生成失败', true); return; }
+        var box = document.getElementById('pwNotifyTextBox');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'pwNotifyTextBox';
+          box.style.cssText = 'margin-top:12px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;';
+          document.getElementById('settleResults').parentNode.insertBefore(box, document.getElementById('settleResults'));
+        }
+        var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><h3 style="margin:0;font-size:14px;">通知文本</h3>'
+          + '<button class="ghost-button" onclick="copyAllPWNotifyText()" style="font-size:12px;"><i data-lucide="copy"></i> 全部复制</button></div>';
+        result.texts.forEach(function(item) {
+          html += '<div style="margin-bottom:10px;">'
+            + '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">' + escHtml(item.project) + '</div>'
+            + '<pre class="pw-notify-text" style="white-space:pre-wrap;font-size:12px;line-height:1.6;background:var(--bg-input);padding:10px;border-radius:6px;border:1px solid var(--border);margin:0;">' + escHtml(item.text) + '</pre>'
+            + '</div>';
+        });
+        box.innerHTML = html;
+        lucide.createIcons();
+        showToast('通知文本已生成');
+      } catch(e) { showToast('网络错误: ' + e.message, true); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="message-square-text"></i> 生成通知文本';
+        lucide.createIcons();
+      }
+    }
+
+    function copyAllPWNotifyText() {
+      var pres = document.querySelectorAll('.pw-notify-text');
+      var allText = [];
+      pres.forEach(function(pre) { allText.push(pre.textContent); });
+      var text = allText.join('\n\n');
+      navigator.clipboard.writeText(text).then(function() {
+        showToast('已复制到剪贴板');
+      }).catch(function() {
+        showToast('复制失败，请手动选择复制', true);
+      });
+    }
+
+    function generateSealedFromPanel() {
+      var btn = document.getElementById('sealedSettleBtn');
+      if (!btn) return;
+      var year = btn.dataset.year;
+      var month = btn.dataset.month;
+      var projKey = btn.dataset.project || document.getElementById('currentProject').value;
+      if (!year || !month) { showToast('请先生成对账单', true); return; }
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+      fetch('/api/settlement/mamian/generate-sealed', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(year), month: parseInt(month), project: projKey}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        if (result.status !== 'success') { showToast(result.message || '生成失败', true); btn.disabled = false; return; }
+        showToast('盖章版结算单已生成', false);
+        btn.innerHTML = '<i data-lucide="file-text" style="color:#c0392b;"></i> 生成盖章版结算单';
+        if (result.file && result.file.path) {
+          var pdfPath = result.file.path.replace(/\\/g, '\\\\');
+          document.getElementById('settleResults').innerHTML =
+            '<span class="settle-result-card" onclick="openSettleFile(\'' + pdfPath + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;color:#c0392b;"></i> ' + escHtml(result.file.name) + '</span>'
+            + document.getElementById('settleResults').innerHTML;
+        }
+        if (result.invoice_text) {
+          showInvoiceRequest(result.invoice_text);
+        }
+        refreshSettleSidebar();
+        lucide.createIcons();
+        btn.disabled = false;
+      })
+      .catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function openSettleFile(filePath) {
+      if (window.electronAPI) {
+        window.electronAPI.openFile(filePath);
+      } else {
+        fetch('/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        }).then(function(r) { return r.json(); })
+          .then(function(d) { if (d.status !== 'success') showToast('打开失败: ' + d.message, true); })
+          .catch(function(e) { showToast('打开失败: ' + e.message, true); });
+      }
+    }
+
+    var _settleSummaryText = '';
+    function showSettleSummary(table1, table2, targetDivId) {
+      var resultsDiv = document.getElementById(targetDivId || 'settleResults');
+      var html = '<div style="margin-top:12px;padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;">';
+      html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px;"><i data-lucide="list"></i> 邮件汇总 <button class="ghost-button" onclick="copySettleSummary()" style="font-size:10px;padding:2px 6px;margin-left:8px;"><i data-lucide="copy" style="width:12px;height:12px;"></i> 复制</button></div>';
+      _settleSummaryText = '';
+      var td = 'style=\"padding:6px 10px;border:1px solid var(--border-subtle);font-size:12px;\"';
+      var th = 'style=\"padding:6px 10px;border:1px solid var(--border-subtle);font-size:12px;font-weight:600;background:var(--bg-card);\"';
+      var left = (table1 || []), right = (table2 || []);
+      var maxRows = Math.max(left.length, right.length);
+      html += '<table style=\"width:100%;border-collapse:collapse;border:1px solid var(--border);\"><thead><tr>';
+      html += '<th ' + th + '>项目名</th><th ' + th + ' style=\"text-align:right;\">金额(USD)</th>';
+      html += '<th ' + th + '>项目名</th><th ' + th + ' style=\"text-align:right;\">金额(USD)</th>';
+      html += '</tr></thead><tbody>';
+      var copyLines = [];
+      for (var i = 0; i < maxRows; i++) {
+        var l = left[i], r = right[i];
+        html += '<tr>';
+        html += '<td ' + td + '>' + (l ? escHtml(l.name) : '') + '</td>';
+        html += '<td ' + td + ' style=\"text-align:right;\">' + (l ? (l.usd_amount||0).toFixed(2) : '') + '</td>';
+        html += '<td ' + td + '>' + (r ? escHtml(r.name) : '') + '</td>';
+        html += '<td ' + td + ' style=\"text-align:right;\">' + (r ? (r.usd_amount||0).toFixed(2) : '') + '</td>';
+        html += '</tr>';
+        var lName = l ? l.name : '', lAmt = l ? (l.usd_amount||0).toFixed(2) : '';
+        var rName = r ? r.name : '', rAmt = r ? (r.usd_amount||0).toFixed(2) : '';
+        copyLines.push(lName + '\\t' + lAmt + '\\t' + rName + '\\t' + rAmt);
+      }
+      html += '</tbody></table>';
+      _settleSummaryText = '项目名\\t金额(USD)\\t项目名\\t金额(USD)\\n' + copyLines.join('\\n');
+      html += '</div>';
+      resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+      lucide.createIcons();
+    }
+    function copySettleSummary() {
+      if (!_settleSummaryText) { showToast('暂无汇总数据', true); return; }
+      var ta = document.createElement('textarea');
+      ta.value = _settleSummaryText; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('已复制'); } catch(e) { showToast('复制失败', true); }
+      document.body.removeChild(ta);
+    }
+
+    function toggleSidebarCompany(header) {
+      header.classList.toggle('collapsed');
+      const list = header.nextElementSibling;
+      if (list) list.style.display = header.classList.contains('collapsed') ? 'none' : '';
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ===== 结算文件列表 =====
+
+    async function loadSettleHistory(year, month, projKey) {
+      const content = document.getElementById('settleHistoryContent');
+      const countEl = document.getElementById('settleHistoryCount');
+      if (!content || !countEl) return;
+
+      try {
+        const resp = await fetch('/api/settlement-files?project=' + encodeURIComponent(projKey) + '&year=' + year + '&month=' + month);
+        const result = await resp.json();
+        if (result.status !== 'success' || !result.data || result.data.length === 0) {
+          content.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          countEl.textContent = '0';
+          return;
+        }
+        countEl.textContent = result.data.length;
+        var html = '';
+        result.data.forEach(function(file) {
+          var encodedPath = encodeURIComponent(file.path);
+          var date = new Date(file.mtime * 1000);
+          var dateStr = (date.getMonth() + 1) + '/' + date.getDate();
+          html += '<div class="history-file-item" data-path="' + encodedPath + '">'
+            + '<i data-lucide="' + (file.name.endsWith('.pdf') ? 'file-text' : 'file-spreadsheet') + '" onclick="openSettleFile(\'' + file.path.replace(/\\/g, '\\\\') + '\')"></i>'
+            + '<span class="history-file-name" onclick="openSettleFile(\'' + file.path.replace(/\\/g, '\\\\') + '\')">' + escHtml(file.name) + '</span>'
+            + '<span class="history-file-date">' + dateStr + '</span>'
+            + '<button class="history-file-copy" onclick="copySettleFile(\'' + file.path.replace(/\\/g, '\\\\') + '\')" title="复制文件">'
+            + '<i data-lucide="copy"></i></button>'
+            + '<button class="history-file-delete" onclick="deleteSettleFile(\'' + file.path.replace(/\\/g, '\\\\') + '\', this)" title="删除文件">'
+            + '<i data-lucide="trash-2"></i></button>'
+            + '</div>';
+        });
+        content.innerHTML = html;
+        lucide.createIcons();
+      } catch(e) {
+        content.innerHTML = '<div style="padding:16px;text-align:center;color:#ef4444;font-size:12px;">加载失败</div>';
+      }
+    }
+
+    async function checkExistingBill(year, month, projKey) {
+      if (projKey !== 'umamusume' && projKey !== 'bang2' && projKey !== 'hbr') return;
+      try {
+        const resp = await fetch('/api/settlement-files?project=' + encodeURIComponent(projKey) + '&year=' + year + '&month=' + month);
+        const result = await resp.json();
+        if (result.status === 'success' && result.data) {
+          const hasBill = result.data.some(function(f) { return f.name.indexOf('翻译账单') !== -1 && f.name.endsWith('.xlsx'); });
+          const sealedBtn = document.getElementById('sealedSettleBtn');
+          if (sealedBtn && hasBill) {
+            sealedBtn.disabled = false;
+            sealedBtn.dataset.year = year;
+            sealedBtn.dataset.month = month;
+            sealedBtn.style.display = '';
+          }
+        }
+      } catch(e) { console.error('checkExistingBill error:', e); }
+    }
+
+    function deleteSettleFile(filePath, btn) {
+      if (!confirm('确定要删除这个结算文件吗？')) return;
+      fetch('/delete-quote', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({path: filePath}),
+      }).then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.status === 'success') {
+            var item = btn.parentElement;
+            item.remove();
+            var countEl = document.getElementById('settleHistoryCount');
+            if (countEl) countEl.textContent = Math.max(0, parseInt(countEl.textContent) - 1);
+          } else { showToast('删除失败: ' + (d.message || ''), true); }
+        }).catch(function(e) { showToast('删除失败: ' + e.message, true); });
+    }
+
+    function copySettleFile(filePath) {
+      if (window.electronAPI && window.electronAPI.copyToClipboard) {
+        window.electronAPI.copyToClipboard(filePath).then(function(result) {
+          if (result.success) showToast('已复制到剪贴板，可直接粘贴到微信');
+          else showToast('复制失败', true);
+        });
+      } else {
+        showToast('请在Electron应用中使用此功能', true);
+      }
+    }
+
+    // ===== 开票请求 =====
+
+    async function loadInvoiceRequest(year, month, projKey) {
+      if (!projKey) projKey = document.getElementById('currentProject').value;
+      try {
+        const resp = await fetch('/api/invoice-request?year=' + year + '&month=' + month + '&project=' + encodeURIComponent(projKey));
+        const result = await resp.json();
+        if (result.status === 'success' && result.text) {
+          showInvoiceRequest(result.text);
+        }
+      } catch(e) {}
+    }
+
+    async function loadDiezhiInvoice(year, month) {
+      try {
+        const resp = await fetch('/api/settlement_diezhi/invoice-info?year=' + year + '&month=' + month);
+        const result = await resp.json();
+        if (result.status === 'success' && result.invoice) {
+          showInvoiceRequest(result.invoice);
+        } else {
+          document.getElementById('invoiceRequestBox').style.display = 'none';
+        }
+      } catch(e) {}
+    }
+
+    function showInvoiceRequest(text) {
+      var box = document.getElementById('invoiceRequestBox');
+      var pre = document.getElementById('invoiceRequestText');
+      if (box && pre) {
+        box.style.display = '';
+        pre.textContent = text;
+        lucide.createIcons();
+      }
+    }
+
+    function copyInvoiceText() {
+      var text = document.getElementById('invoiceRequestText').textContent;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function() {
+          showToast('开票信息已复制');
+        }).catch(function() {
+          showToast('复制失败，请手动复制', true);
+        });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('开票信息已复制');
+      }
+    }
+
+    // ===== 结算文件右键菜单 =====
+    document.addEventListener('contextmenu', function(e) {
+      var settleFileItem = e.target.closest('#settleHistoryContent .history-file-item');
+      if (settleFileItem) {
+        e.preventDefault();
+        showSettleContextMenu(decodeURIComponent(settleFileItem.dataset.path), e.clientX, e.clientY);
+        return;
+      }
+      var wbFileItem = e.target.closest('#wbFileTreeContent .history-file-item');
+      if (wbFileItem) {
+        e.preventDefault();
+        showSettleContextMenu(decodeURIComponent(wbFileItem.dataset.path), e.clientX, e.clientY);
+        return;
+      }
+      var zlFileItem = e.target.closest('#zlFileTreeContent .history-file-item');
+      if (zlFileItem) {
+        e.preventDefault();
+        showSettleContextMenu(decodeURIComponent(zlFileItem.dataset.path), e.clientX, e.clientY);
+        return;
+      }
+      // 原有的报价单右键菜单逻辑
+      var fileItem = e.target.closest('#historyContent .history-file-item');
+      if (fileItem) {
+        e.preventDefault();
+        var fp = decodeURIComponent(fileItem.dataset.path);
+        showContextMenu(fp, e.clientX, e.clientY, false);
+        return;
+      }
+      var folderHeader = e.target.closest('.history-month-header, .history-project-header');
+      if (folderHeader) {
+        var folderPathAttr = folderHeader.getAttribute('data-folder-path');
+        var folderPath = folderPathAttr ? decodeURIComponent(folderPathAttr) : '';
+        if (folderPath) {
+          e.preventDefault();
+          showContextMenu(folderPath, e.clientX, e.clientY, true);
+        }
+      }
+    });
+
+    function showSettleContextMenu(targetPath, x, y) {
+      var existing = document.querySelector('.context-menu');
+      if (existing) existing.remove();
+      var menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background:#1e2937;border:1px solid #3b4754;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;overflow:hidden;';
+      var items = [
+        {label:'打开文件', icon:'file-spreadsheet', action:function(){ openSettleFile(targetPath); }},
+        {label:'打开目标文件夹', icon:'folder-open', action:function(){ openFileLocation(targetPath); }},
+        {label:'复制文件', icon:'copy', action:function(){ copySettleFile(targetPath); }},
+        {label:'删除', icon:'trash-2', action:function(){
+          var selector = '.history-file-item[data-path="' + encodeURIComponent(targetPath).replace(/'/g, "\\'") + '"]';
+          var item = document.querySelector('#settleHistoryContent ' + selector)
+            || document.querySelector('#wbFileTreeContent ' + selector)
+            || document.querySelector('#zlFileTreeContent ' + selector);
+          if (item) deleteSettleFile(targetPath, item.querySelector('.history-file-delete'));
+        }},
+      ];
+      items.forEach(function(item) {
+        var menuItem = document.createElement('div');
+        menuItem.className = 'context-menu-item';
+        menuItem.style.cssText = 'padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;color:#e2e8f0;';
+        var icon = document.createElement('i');
+        icon.setAttribute('data-lucide', item.icon);
+        icon.style.cssText = 'width:16px;height:16px;';
+        menuItem.appendChild(icon);
+        var span = document.createElement('span');
+        span.textContent = item.label;
+        menuItem.appendChild(span);
+        menuItem.addEventListener('click', function(){ item.action(); menu.remove(); });
+        menuItem.addEventListener('mouseenter', function(){ menuItem.style.background = '#3b4754'; });
+        menuItem.addEventListener('mouseleave', function(){ menuItem.style.background = 'transparent'; });
+        menu.appendChild(menuItem);
+      });
+      document.body.appendChild(menu);
+      lucide.createIcons();
+      document.addEventListener('click', function closeMenu(e) {
+        if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); }
+      });
+    }
+
+    // ===== TK 结算 =====
+    function tkCopyOrderlist() {
+      var year = document.getElementById('settleYear').value;
+      var month = document.getElementById('settleMonth').value;
+      var btn = document.getElementById('tkCopyOrderlistBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 复制中...';
+      lucide.createIcons();
+
+      fetch('/api/settlement/tk/copy-orderlist', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(year), month: parseInt(month)}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="copy"></i> 制作对账单';
+        lucide.createIcons();
+        if (result.status === 'success') {
+          showToast('对账单已生成并打开');
+          document.getElementById('settleResults').innerHTML =
+            '<span class="settle-result-card" onclick="openSettleFile(\'' + result.file.path.replace(/\\/g, '\\\\') + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217346;"></i> ' + escHtml(result.file.name) + '</span>'
+            + document.getElementById('settleResults').innerHTML;
+          loadSettleHistory(year, month, 'tk');
+          lucide.createIcons();
+        } else {
+          showToast(result.message || '生成失败', true);
+        }
+      })
+      .catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function tkGenerateSettlement() {
+      var year = document.getElementById('settleYear').value;
+      var month = document.getElementById('settleMonth').value;
+      if (!confirm('确认生成 ' + year + '年' + month + '月 的结算单和Invoice？')) return;
+
+      var btn = document.getElementById('tkGenerateBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+
+      fetch('/api/settlement/tk/generate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: parseInt(year), month: parseInt(month)}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="sparkles"></i> 生成结算单和Invoice';
+        lucide.createIcons();
+        if (result.status === 'success') {
+          showToast('结算单和Invoice已生成');
+          var settlementPath = result.settlement.path.replace(/\\/g, '\\\\');
+          var invoicePath = result.invoice.path.replace(/\\/g, '\\\\');
+          document.getElementById('settleResults').innerHTML =
+            '<span class="settle-result-card" onclick="openSettleFile(\'' + settlementPath + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;color:#c0392b;"></i> ' + escHtml(result.settlement.name) + '</span>'
+            + '<span class="settle-result-card" onclick="openSettleFile(\'' + invoicePath + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;color:#185abd;"></i> ' + escHtml(result.invoice.name) + '</span>'
+            + document.getElementById('settleResults').innerHTML;
+          loadSettleHistory(year, month, 'tk');
+          lucide.createIcons();
+        } else {
+          showToast(result.message || '生成失败', true);
+        }
+      })
+      .catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+    // ===== 工作台页面切换 =====
+    function switchPage(page) {
+      var formPanel = document.querySelector('.form-panel');
+      var settlePanel = document.getElementById('settlePanel');
+      var quoteAllPanel = document.getElementById('quoteAllPanel');
+      var wbPanel = document.getElementById('settlementWorkbenchPanel');
+      var zlPanel = document.getElementById('zulongPanel');
+      var quoteModeTab = document.getElementById('quoteModeTab');
+      var settleModeTab = document.getElementById('settleModeTab');
+      var topbarActions = document.getElementById('topbarActions');
+      var settleTopbarActions = document.getElementById('settleTopbarActions');
+      var quoteHistoryPanel = document.getElementById('quoteHistoryPanel');
+      var settleHistoryPanel = document.getElementById('settleHistoryPanel');
+
+      formPanel.style.display = 'none';
+      settlePanel.style.display = 'none';
+      quoteAllPanel.style.display = 'none';
+      wbPanel.style.display = 'none';
+      if (zlPanel) zlPanel.style.display = 'none';
+      quoteModeTab.classList.remove('active');
+      settleModeTab.classList.remove('active');
+      topbarActions.style.display = 'none';
+      settleTopbarActions.style.display = 'none';
+      if (quoteHistoryPanel) quoteHistoryPanel.style.display = 'none';
+      if (settleHistoryPanel) settleHistoryPanel.style.display = 'none';
+      var wbftp = document.getElementById('wbFileTreePanel');
+      if (wbftp) wbftp.style.display = 'none';
+
+      document.querySelectorAll('.workspace-link').forEach(function(el) { el.classList.remove('active'); });
+      document.querySelectorAll('.project-link:not(.workspace-link)').forEach(function(el) { el.classList.remove('active'); });
+
+      if (page === 'quote-all') {
+        quoteModeTab.style.display = 'none';
+        settleModeTab.style.display = 'none';
+        quoteAllPanel.style.display = '';
+        document.querySelector('.workspace-link[onclick*="quote-all"]').classList.add('active');
+        initQuoteAllGrid();
+      } else if (page === 'settlement-workbench') {
+        quoteModeTab.style.display = 'none';
+        settleModeTab.style.display = 'none';
+        wbPanel.style.display = '';
+        document.querySelector('.workspace-link[onclick*="settlement-workbench"]').classList.add('active');
+        if (quoteHistoryPanel) quoteHistoryPanel.style.display = 'none';
+        if (settleHistoryPanel) settleHistoryPanel.style.display = 'none';
+        var wbFileTreePanel = document.getElementById('wbFileTreePanel');
+        if (wbFileTreePanel) wbFileTreePanel.style.display = '';
+        var wsSidebar = document.querySelector('.workspace-sidebar');
+        if (wsSidebar) wsSidebar.style.display = '';
+        initWbMonthPicker();
+        initWbProjectList();
+      } else if (page === 'zulong-settlement') {
+        quoteModeTab.style.display = 'none';
+        settleModeTab.style.display = 'none';
+        if (zlPanel) zlPanel.style.display = '';
+        var wsSidebar = document.querySelector('.workspace-sidebar');
+        if (wsSidebar) wsSidebar.style.display = '';
+        var wbftp = document.getElementById('wbFileTreePanel');
+        if (wbftp) wbftp.style.display = 'none';
+        var settleHistory = document.getElementById('settleHistoryPanel');
+        if (settleHistory) settleHistory.style.display = 'none';
+        var zlFileTreePanel = document.getElementById('zlFileTreePanel');
+        if (zlFileTreePanel) zlFileTreePanel.style.display = '';
+        initZlMonthPicker();
+        renderZlProjectCards();
+        loadZlFileTree();
+      }
+    }
+
+    // ===== 一键报价 =====
+    var QUOTE_ALL_PROJECTS = [
+      {key:'huanta',name:'幻塔',company:'完美世界'},
+      {key:'yihuan_nei',name:'异环游戏内',company:'完美世界'},
+      {key:'yihuan_faxing',name:'异环发行',company:'完美世界'},
+      {key:'zhan_shuang',name:'战双版更',company:'库洛游戏'},
+      {key:'zhan_shuang_feishu',name:'战双发行',company:'库洛游戏'},
+      {key:'tk',name:'TK填表',company:'Bilibili'},
+      {key:'4399',name:'4399填表',company:'4399'},
+    ];
+
+    function initQuoteAllGrid() {
+      var grid = document.getElementById('quoteAllGrid');
+      grid.innerHTML = QUOTE_ALL_PROJECTS.map(function(p) {
+        return '<div class="quote-all-card" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;">'
+          + '<span style="font-size:11px;color:var(--muted);">' + escHtml(p.company) + '</span>'
+          + '<strong style="font-size:13px;">' + escHtml(p.name) + '</strong>'
+          + '</div>';
+      }).join('');
+      lucide.createIcons();
+    }
+
+    var _quoteJobId = null;
+    var _quotePollTimer = null;
+
+    function startQuoteAll() {
+      var allKeys = QUOTE_ALL_PROJECTS.map(function(p) { return p.key; });
+      var btn = document.getElementById('quoteAllStartBtn');
+      btn.disabled = true;
+      document.getElementById('quoteAllStatusText').textContent = '报价中...';
+      document.getElementById('quoteAllProgress').style.display = '';
+      document.getElementById('quoteAllResults').style.display = 'none';
+      document.getElementById('quoteAllResults').innerHTML = '';
+      document.getElementById('quoteAllProgress').innerHTML = QUOTE_ALL_PROJECTS.map(function(p) {
+        return '<div class="qa-progress-row" id="qap-' + p.key + '">'
+          + '<i data-lucide="clock" class="loading-spin" style="width:14px;height:14px;"></i> '
+          + escHtml(p.name) + ' <span style="color:var(--muted);font-size:11px;">等待中...</span></div>';
+      }).join('');
+      lucide.createIcons();
+
+      fetch('/api/quote-all', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({projects: allKeys}),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status !== 'success') { showToast(data.message, true); btn.disabled = false; return; }
+        _quoteJobId = data.job_id;
+        _quotePollTimer = setInterval(pollQuoteAllStatus, 2000);
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function pollQuoteAllStatus() {
+      if (!_quoteJobId) { clearInterval(_quotePollTimer); return; }
+      fetch('/api/quote-all/status?job_id=' + _quoteJobId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status !== 'success') return;
+        var job = data.job;
+        var allDone = true;
+        Object.keys(job.projects).forEach(function(key) {
+          var proj = job.projects[key];
+          var el = document.getElementById('qap-' + key);
+          if (!el) return;
+          var iconEl = el.querySelector('i');
+          var statusSpan = el.querySelector('span');
+          if (proj.status === 'done') {
+            if (iconEl) { iconEl.setAttribute('data-lucide','check-circle'); iconEl.classList.remove('loading-spin'); iconEl.style.color='#10b981'; }
+            if (statusSpan) { statusSpan.textContent = '完成'; statusSpan.style.color = '#10b981'; }
+          } else if (proj.status === 'error') {
+            if (iconEl) { iconEl.setAttribute('data-lucide','x-circle'); iconEl.classList.remove('loading-spin'); iconEl.style.color='#ef4444'; }
+            if (statusSpan) { statusSpan.textContent = '失败: ' + (proj.error || ''); statusSpan.style.color = '#ef4444'; }
+          } else if (proj.status === 'running') {
+            if (statusSpan) { statusSpan.textContent = '执行中...'; statusSpan.style.color = '#f59e0b'; }
+            allDone = false;
+          } else {
+            allDone = false;
+          }
+        });
+        lucide.createIcons();
+        if (job.status === 'done' || (allDone && Object.keys(job.projects).length > 0)) {
+          clearInterval(_quotePollTimer);
+          document.getElementById('quoteAllStartBtn').disabled = false;
+          var successCount = Object.values(job.projects).filter(function(p) { return p.status === 'done'; }).length;
+          var errorCount = Object.values(job.projects).filter(function(p) { return p.status === 'error'; }).length;
+          document.getElementById('quoteAllStatusText').textContent = '全部完成：成功 ' + successCount + ' 个，失败 ' + errorCount + ' 个';
+
+          var resultsHtml = '<h4 style=\"margin:12px 0 8px;\">执行结果</h4>';
+          Object.keys(job.projects).forEach(function(key) {
+            var proj = job.projects[key];
+            var icon = proj.status === 'done' ? 'check-circle' : 'x-circle';
+            var color = proj.status === 'done' ? '#10b981' : '#ef4444';
+            resultsHtml += '<details open style=\"margin-bottom:6px;border:1px solid var(--border);border-radius:6px;\">'
+              + '<summary style=\"padding:8px 12px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;\">'
+              + '<i data-lucide=\"' + icon + '\" style=\"width:16px;height:16px;color:' + color + ';\"></i> '
+              + escHtml(proj.name) + ' - ' + (proj.status === 'done' ? '完成' : '失败')
+              + '</summary>'
+              + '<pre style=\"margin:0;padding:12px;background:#1a1f2e;color:#e2e8f0;font-size:11px;line-height:1.5;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;\">' + escHtml(proj.output || proj.error || '(无输出)') + '</pre>'
+              + '</details>';
+          });
+          document.getElementById('quoteAllResults').innerHTML = resultsHtml;
+          document.getElementById('quoteAllResults').style.display = '';
+          lucide.createIcons();
+        }
+      });
+    }
+
+    // ===== 月度结算工作台 =====
+    var WB_PROJECTS = [
+      {key:'huanta',name:'幻塔',company:'完美世界',type:'pw'},
+      {key:'yihuan_nei',name:'异环游戏内',company:'完美世界',type:'pw'},
+      {key:'yihuan_faxing',name:'异环发行',company:'完美世界',type:'pw'},
+      {key:'zhan_shuang',name:'战双版更',company:'库洛游戏',type:'zs'},
+      {key:'zhan_shuang_faxing',name:'战双发行',company:'库洛游戏',type:'zsfx'},
+      {key:'umamusume',name:'马娘',company:'Bilibili',type:'mamian'},
+      {key:'bang2',name:'BANG2',company:'Bilibili',type:'mamian'},
+      {key:'hbr',name:'炽焰天穹',company:'Bilibili',type:'mamian'},
+      {key:'liandishenkong',name:'恋与深空',company:'叠纸',type:'diezhi'},
+      {key:'shining_nikki',name:'闪暖',company:'叠纸',type:'diezhi'},
+      {key:'niki_xinzuo',name:'ニキ新作',company:'叠纸',type:'diezhi'},
+      {key:'tk',name:'TK项目',company:'Bilibili',type:'tk'},
+      {key:'4399',name:'4399',company:'4399',type:'s94399'},
+    ];
+
+    function initWbMonthPicker() {
+      var yearSel = document.getElementById('wbYear');
+      var monthSel = document.getElementById('wbMonth');
+      if (yearSel.options.length > 0) return;
+      var now = new Date();
+      for (var y = 2025; y <= now.getFullYear() + 1; y++) {
+        var opt = document.createElement('option');
+        opt.value = y; opt.textContent = y + '年';
+        if (y === (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())) opt.selected = true;
+        yearSel.appendChild(opt);
+      }
+      for (var m = 1; m <= 12; m++) {
+        var o = document.createElement('option');
+        o.value = m; o.textContent = m + '月';
+        if (m === (now.getMonth() === 0 ? 12 : now.getMonth())) o.selected = true;
+        monthSel.appendChild(o);
+      }
+    }
+
+    function getWbYearMonth() {
+      return {
+        year: parseInt(document.getElementById('wbYear').value),
+        month: parseInt(document.getElementById('wbMonth').value),
+      };
+    }
+
+    function toggleWbSelectAll() {
+      var checked = document.getElementById('wbSelectAll').checked;
+      document.querySelectorAll('.wb-cb').forEach(function(cb) { cb.checked = checked; });
+      updateWbGenerateBtn();
+      if (_wbPreviewProjects) {
+        saveWbPreviewCache(_wbPreviewProjects);
+        updateWbPreviewRows(_wbPreviewProjects);
+      }
+    }
+
+    function getWbSelected() {
+      var keys = [];
+      document.querySelectorAll('.wb-cb:checked').forEach(function(cb) { keys.push(cb.value); });
+      return keys;
+    }
+
+    function updateWbGenerateBtn() {
+      document.getElementById('wbGenerateBtn').disabled = getWbSelected().length === 0;
+    }
+
+    function initWbProjectList() {
+      var html = '';
+      var companyOrder = [];
+      WB_PROJECTS.forEach(function(wp) {
+        if (companyOrder.indexOf(wp.company) === -1) companyOrder.push(wp.company);
+      });
+
+      companyOrder.forEach(function(company) {
+        var projects = WB_PROJECTS.filter(function(p) { return p.company === company; });
+        html += '<div class="wb-company-group" style="margin-bottom:6px;">';
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);">';
+        html += '<i data-lucide="building" style="width:12px;height:12px;"></i>';
+        html += escHtml(company);
+        html += '<span style="font-weight:400;" id="wb-company-total-' + company.replace(/\s/g,'_') + '"></span>';
+        html += '</div>';
+        projects.forEach(function(p) {
+          html += '<div class="wb-project-row" id="wb-row-' + p.key + '" style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 18px;font-size:12px;border-bottom:1px solid rgba(0,0,0,.03);">';
+          html += '<input type="checkbox" class="wb-cb" value="' + p.key + '" onchange="handleWbSelectionChange()" checked style="width:13px;height:13px;flex-shrink:0;">';
+          html += '<span style="width:75px;flex-shrink:0;">' + escHtml(p.name) + '</span>';
+          html += '<span class="wb-row-data" style="color:var(--muted);font-size:11px;width:40px;text-align:right;">-</span>';
+          html += '<span class="wb-row-amount" style="width:75px;text-align:right;font-size:11px;color:var(--muted);">-</span>';
+          html += '<span class="wb-row-status" style="width:55px;font-size:11px;text-align:center;color:var(--muted);"></span>';
+          html += '<span style="flex:1;"></span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+
+      document.getElementById('wbCompanyGroups').innerHTML = html;
+      document.getElementById('wbTableWrap').style.display = 'block';
+      document.getElementById('wbSummary').style.display = 'none';
+      document.getElementById('wbSelectAll').checked = true;
+      updateWbGenerateBtn();
+      lucide.createIcons();
+      restoreWbPreviewCache();
+      loadWbFileTree();
+    }
+
+    var _wbPreviewProjects = null;
+
+    function _wbPreviewCacheKey() {
+      return 'settlement_workbench_preview_state_v1';
+    }
+
+    function saveWbPreviewCache(projects) {
+      try {
+        var ym = getWbYearMonth();
+        var state = {
+          year: ym.year,
+          month: ym.month,
+          selected: getWbSelected(),
+          projects: projects || [],
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(_wbPreviewCacheKey(), JSON.stringify(state));
+      } catch(e) {}
+    }
+
+    function restoreWbPreviewCache() {
+      try {
+        var saved = localStorage.getItem(_wbPreviewCacheKey());
+        if (!saved) return false;
+        var state = JSON.parse(saved);
+        if (!state || !Array.isArray(state.projects)) return false;
+
+        var yearSel = document.getElementById('wbYear');
+        var monthSel = document.getElementById('wbMonth');
+        if (state.year && yearSel) yearSel.value = state.year;
+        if (state.month && monthSel) monthSel.value = state.month;
+
+        if (Array.isArray(state.selected)) {
+          document.querySelectorAll('.wb-cb').forEach(function(cb) {
+            cb.checked = state.selected.indexOf(cb.value) !== -1;
+          });
+          var all = document.getElementById('wbSelectAll');
+          if (all) all.checked = state.selected.length > 0 && state.selected.length === document.querySelectorAll('.wb-cb').length;
+        }
+
+        _wbPreviewProjects = state.projects;
+        updateWbGenerateBtn();
+        updateWbPreviewRows(state.projects);
+        return true;
+      } catch(e) { return false; }
+    }
+
+    function handleWbSelectionChange() {
+      updateWbGenerateBtn();
+      var all = document.getElementById('wbSelectAll');
+      if (all) all.checked = document.querySelectorAll('.wb-cb:checked').length === document.querySelectorAll('.wb-cb').length;
+      if (_wbPreviewProjects) {
+        saveWbPreviewCache(_wbPreviewProjects);
+        updateWbPreviewRows(_wbPreviewProjects);
+      }
+    }
+
+    function loadWbPreview() {
+      var selected = getWbSelected();
+      if (selected.length === 0) { showToast('请先勾选项目', true); return; }
+      var ym = getWbYearMonth();
+      var btn = document.getElementById('wbPreviewBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading-spin"></i> 加载中...';
+      lucide.createIcons();
+
+      fetch('/api/settlement-workbench/preview?year=' + ym.year + '&month=' + ym.month)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="search"></i> 批量预览';
+        lucide.createIcons();
+        if (data.status !== 'success') { showToast(data.message, true); return; }
+        _wbPreviewProjects = data.projects || [];
+        saveWbPreviewCache(_wbPreviewProjects);
+        updateWbPreviewRows(data.projects);
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function updateWbPreviewRows(projects) {
+      projects = projects || [];
+      document.querySelectorAll('.wb-project-row').forEach(function(row) {
+        var dataEl = row.querySelector('.wb-row-data');
+        var amtEl = row.querySelector('.wb-row-amount');
+        var statusEl = row.querySelector('.wb-row-status');
+        if (dataEl) dataEl.textContent = '-';
+        if (amtEl) { amtEl.textContent = '-'; amtEl.style.color = 'var(--muted)'; }
+        if (statusEl) { statusEl.textContent = ''; statusEl.style.color = 'var(--muted)'; }
+      });
+      document.querySelectorAll('[id^="wb-company-total-"]').forEach(function(el) { el.textContent = ''; });
+
+      var seenCompanies = {};
+      projects.forEach(function(p) {
+        var row = document.getElementById('wb-row-' + p.key);
+        if (!row) return;
+        var cb = row.querySelector('.wb-cb');
+        if (!cb || !cb.checked) return;
+        if (!seenCompanies[p.company]) seenCompanies[p.company] = {count: 0, total: 0, totalTax: 0};
+
+        var dataEl = row.querySelector('.wb-row-data');
+        var amtEl = row.querySelector('.wb-row-amount');
+        var statusEl = row.querySelector('.wb-row-status');
+
+        if (p.status === 'has_data') {
+          if (dataEl) dataEl.textContent = p.count;
+          if (amtEl) { amtEl.textContent = (p.total_amount_pretax || 0).toFixed(2) + ' / ' + (p.total_amount || 0).toFixed(2); amtEl.style.color = ''; }
+          if (statusEl) { statusEl.textContent = '' + p.count; statusEl.style.color = '#10b981'; }
+          seenCompanies[p.company].count += p.count;
+          seenCompanies[p.company].total += p.total_amount_pretax || 0;
+          seenCompanies[p.company].totalTax += p.total_amount || 0;
+        } else if (p.status === 'empty') {
+          if (dataEl) dataEl.textContent = '0';
+          if (amtEl) amtEl.textContent = '0';
+          if (statusEl) { statusEl.textContent = '无'; statusEl.style.color = 'var(--muted)'; }
+        } else if (p.status === 'manual') {
+          if (statusEl) { statusEl.textContent = '手动'; statusEl.style.color = 'var(--muted)'; }
+        } else if (p.status === 'error') {
+          if (statusEl) { statusEl.textContent = '!'; statusEl.style.color = '#ef4444'; }
+        }
+      });
+
+      Object.keys(seenCompanies).forEach(function(company) {
+        var el = document.getElementById('wb-company-total-' + company.replace(/\s/g,'_'));
+        if (el) el.textContent = seenCompanies[company].count + '条 ' + seenCompanies[company].total.toFixed(2) + ' / ' + seenCompanies[company].totalTax.toFixed(2) + '元';
+      });
+
+      var summary = document.getElementById('wbSummary');
+      if (summary) {
+        var checkedProjects = projects.filter(function(p) {
+          var cb = document.querySelector('.wb-cb[value="' + p.key + '"]');
+          return cb && cb.checked;
+        });
+        var totalAmountPretax = checkedProjects.reduce(function(s, p) { return s + (p.total_amount_pretax || 0); }, 0);
+        var totalAmount = checkedProjects.reduce(function(s, p) { return s + (p.total_amount || 0); }, 0);
+        summary.textContent = '已选 ' + checkedProjects.length + ' 项 合计 ' + totalAmountPretax.toFixed(2) + ' / ' + totalAmount.toFixed(2) + ' 元';
+        summary.style.display = '';
+      }
+      lucide.createIcons();
+    }
+
+    function wbSingleGenerate(key) {
+      var ym = getWbYearMonth();
+      var rate = parseFloat(document.getElementById('wbExchangeRate').value) || 0;
+      if (!confirm('确认生成 ' + key + ' 的结算文件？')) return;
+      showToast('正在生成...');
+
+      fetch('/api/settlement-workbench/generate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: ym.year, month: ym.month, projects: [key], exchange_rate: rate}),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status !== 'success') { showToast(data.message || '生成失败', true); return; }
+        var result = data.results[key];
+        if (!result) { showToast('生成失败', true); return; }
+        if (result.status === 'ok') {
+          var filesHtml = (result.files || []).map(function(f) {
+            return '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
+          }).join('');
+          document.getElementById('wbResults').innerHTML = '<div style="color:#10b981;margin-bottom:6px;">' + key + ' 生成成功</div>' + filesHtml + document.getElementById('wbResults').innerHTML;
+          if (result.table1 || result.table2) showSettleSummary(result.table1, result.table2, 'wbResults');
+          showToast(key + ' 结算文件已生成');
+          loadWbFileTree();
+        } else if (result.status === 'empty') {
+          showToast(key + ': ' + (result.message || '没有数据'), true);
+        } else {
+          showToast(key + ': ' + (result.message || '生成失败'), true);
+        }
+        lucide.createIcons();
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); });
+    }
+
+    function batchWbGenerate() {
+      var selected = getWbSelected();
+      if (selected.length === 0) { showToast('请选择至少一个项目', true); return; }
+      if (!confirm('确认生成 ' + selected.length + ' 个项目的结算文件？')) return;
+      var ym = getWbYearMonth();
+      var rate = parseFloat(document.getElementById('wbExchangeRate').value) || 0;
+      var btn = document.getElementById('wbGenerateBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading-spin"></i> 生成中...';
+      lucide.createIcons();
+      showToast('正在生成...');
+
+      fetch('/api/settlement-workbench/generate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: ym.year, month: ym.month, projects: selected, exchange_rate: rate}),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="sparkles"></i> 批量生成选中项目';
+        lucide.createIcons();
+        if (data.status !== 'success') { showToast(data.message || '生成失败', true); return; }
+        var html = '';
+        var okCount = 0;
+        var errCount = 0;
+        var existsCount = 0;
+        Object.keys(data.results).forEach(function(key) {
+          var r = data.results[key];
+          if (r.status === 'ok') {
+            okCount++;
+            html += '<div style="color:#10b981;margin-bottom:2px;">' + key + ' - 成功</div>';
+            (r.files || []).forEach(function(f) {
+              html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;margin-left:12px;">'
+                + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
+            });
+            if (r.verification) {
+              var v = r.verification;
+              if (v.feishu_mark === 'ok') {
+                html += '<div style="color:#22c55e;font-size:11px;margin-left:12px;margin-top:2px;">✓ 飞书标记已确认</div>';
+              } else if (v.feishu_mark === 'skipped') {
+                // 不显示
+              } else {
+                html += '<div style="color:#f59e0b;font-size:11px;margin-left:12px;margin-top:2px;">⚠ 飞书标记异常: ' + escHtml(v.feishu_mark) + '</div>';
+              }
+            }
+          } else if (r.status === 'exists') {
+            existsCount++;
+            html += '<div style="color:#f59e0b;margin-bottom:2px;">⚠ ' + key + ' - ' + escHtml(r.message || '已存在') + '</div>';
+          } else if (r.status === 'empty') {
+            html += '<div style="color:var(--muted);margin-bottom:2px;">' + key + ' - ' + (r.message || '没有数据') + '</div>';
+          } else {
+            errCount++;
+            html += '<div style="color:#ef4444;margin-bottom:2px;">' + key + ' - ' + (r.message || '失败') + '</div>';
+          }
+        });
+        document.getElementById('wbResults').innerHTML = html;
+        var msg = '完成：成功 ' + okCount + ' 个';
+        if (existsCount > 0) msg += '，已存在 ' + existsCount + ' 个';
+        if (errCount > 0) msg += '，失败 ' + errCount + ' 个';
+        showToast(msg);
+        loadWbFileTree();
+        lucide.createIcons();
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function loadWbFileTree() {
+      var ym = getWbYearMonth();
+      var treeEl = document.getElementById('wbFileTreeContent');
+      if (!treeEl) return;
+      treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>';
+
+      fetch('/api/settlement-workbench/files?year=' + ym.year + '&month=' + ym.month)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status !== 'success') { treeEl.innerHTML = ''; return; }
+        if (!data.tree || data.tree.length === 0) {
+          treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          return;
+        }
+        var html = '<div style="padding:8px;">';
+        data.tree.forEach(function(company) {
+          html += '<div style="margin-bottom:6px;">';
+          html += '<div style="font-size:12px;font-weight:600;padding:2px 0;border-bottom:1px solid var(--line);margin-bottom:2px;">' + escHtml(company.name) + '</div>';
+          company.children.forEach(function(child) {
+            if (child.type === 'file') {
+              var isPdf = child.name.endsWith('.pdf');
+              html += '<div class="history-file-item" data-path="' + escHtml(encodeURIComponent(child.path)) + '" style="font-size:11px;padding:2px 0 2px 4px;color:var(--muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="openSettleFile(\'' + escHtml(child.path.replace(/\\/g,'\\\\')) + '\')" title="' + escHtml(child.name) + '">';
+              html += '<i data-lucide=\"' + (isPdf ? 'file-text' : 'file-spreadsheet') + '\" style=\"width:12px;height:12px;color:' + (isPdf ? '#c0392b' : '#217346') + ';margin-right:4px;flex-shrink:0;\"></i>';
+              html += escHtml(child.name);
+              html += '</div>';
+            } else {
+              html += '<div style="font-size:11px;padding:2px 0 1px 4px;color:var(--ink);">' + escHtml(child.name) + '</div>';
+              (child.children || []).forEach(function(f) {
+                var isPdf = f.name.endsWith('.pdf');
+                html += '<div class="history-file-item" data-path="' + escHtml(encodeURIComponent(f.path)) + '" style="font-size:11px;padding:2px 0 2px 12px;color:var(--muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" title="' + escHtml(f.name) + '">';
+                html += '<i data-lucide=\"' + (isPdf ? 'file-text' : 'file-spreadsheet') + '\" style=\"width:12px;height:12px;color:' + (isPdf ? '#c0392b' : '#217346') + ';margin-right:4px;flex-shrink:0;\"></i>';
+                html += escHtml(f.name);
+                html += '</div>';
+              });
+            }
+          });
+          html += '</div>';
+        });
+        html += '</div>';
+        treeEl.innerHTML = html;
+        lucide.createIcons();
+      }).catch(function() { treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载失败</div>'; });
+    }
+
+    function openWbFile(key) {
+      var ym = getWbYearMonth();
+      fetch('/api/settlement-files?project=' + key + '&year=' + ym.year + '&month=' + ym.month)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success' && data.data.length > 0) {
+          openSettleFile(data.data[0].path.replace(/\\/g,'\\\\'));
+        } else {
+          showToast('没有找到结算文件', true);
+        }
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); });
+    }
+
+    // ===== 祖龙客服结算 =====
+    var ZULONG_INVOICE = {
+      yishan: {
+        name: '以闪亮之名',
+        company: '祖龙（天津）科技股份有限公司',
+        category: '*信息技术服务*信息咨询费',
+        taxId: '91120222328594682G',
+        address: '天津市武清区京津科技谷产业园高王路西侧2号孵化器6号楼202室',
+        phone: '022-22196836',
+        bank: '招商银行股份有限公司天津武清支行',
+        account: '122905598910202',
+        unitPrice: 7950,
+      },
+      longzu: {
+        name: '龙族',
+        company: '淮安祖龙科技有限公司',
+        category: '*信息技术服务*信息咨询费',
+        taxId: '91320891MA1MT06W7G',
+        address: '淮安市洪泽区高良涧东七街3号A12-2楼504室',
+        phone: '18052366208',
+        bank: '上海浦东发展银行股份有限公司淮安开发区支行',
+        account: '14050154740000483',
+        unitPrice: 7950,
+      },
+    };
+
+    function initZlMonthPicker() {
+      var yearSel = document.getElementById('zlYear');
+      var monthSel = document.getElementById('zlMonth');
+      if (yearSel.options.length > 0) return;
+      var now = new Date();
+      for (var y = 2025; y <= now.getFullYear() + 1; y++) {
+        var opt = document.createElement('option');
+        opt.value = y; opt.textContent = y + '年';
+        if (y === (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())) opt.selected = true;
+        yearSel.appendChild(opt);
+      }
+      for (var m = 1; m <= 12; m++) {
+        var o = document.createElement('option');
+        o.value = m; o.textContent = m + '月';
+        if (m === (now.getMonth() === 0 ? 12 : now.getMonth())) o.selected = true;
+        monthSel.appendChild(o);
+      }
+    }
+
+    function getZlYearMonth() {
+      return {
+        year: parseInt(document.getElementById('zlYear').value),
+        month: parseInt(document.getElementById('zlMonth').value),
+      };
+    }
+
+    function renderZlProjectCards() {
+      var container = document.getElementById('zlProjectCards');
+      var projects = [
+        {key: 'yishan', info: ZULONG_INVOICE.yishan},
+        {key: 'longzu', info: ZULONG_INVOICE.longzu},
+      ];
+      var html = '';
+      projects.forEach(function(p) {
+        var info = p.info;
+        html += '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">';
+        html += '<h4 style="margin:0 0 6px;font-size:14px;">' + escHtml(info.name) + '</h4>';
+        html += '<label style="font-size:12px;color:var(--muted);">件数 <input type="number" id="zlCount_' + p.key + '" min="0" value="" placeholder="0" style="width:70px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></label>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+      updateZlInvoiceDisplay();
+    }
+
+    function updateZlInvoiceDisplay() {
+      var content = document.getElementById('zlInvoiceContent');
+      var projects = [
+        {key: 'yishan', info: ZULONG_INVOICE.yishan},
+        {key: 'longzu', info: ZULONG_INVOICE.longzu},
+      ];
+      var html = '';
+      projects.forEach(function(p) {
+        html += '<div style="font-size:11px;line-height:1.6;">';
+        html += '<strong>' + escHtml(p.info.name) + '</strong>';
+        html += '<div>公司：' + escHtml(p.info.company) + '</div>';
+        html += '<div>税号：' + escHtml(p.info.taxId) + '</div>';
+        html += '<div>地址：' + escHtml(p.info.address) + '</div>';
+        html += '<div>电话：' + escHtml(p.info.phone) + '</div>';
+        html += '<div>开户行：' + escHtml(p.info.bank) + '</div>';
+        html += '<div>账号：' + escHtml(p.info.account) + '</div>';
+        html += '<div>类别：' + escHtml(p.info.category) + '</div>';
+        html += '<div style="margin-top:2px;">金额：<strong>7950.00 元</strong></div>';
+        html += '</div>';
+      });
+      content.innerHTML = html;
+    }
+
+    function generateZulong() {
+      var yishanCount = parseInt(document.getElementById('zlCount_yishan').value) || 0;
+      var longzuCount = parseInt(document.getElementById('zlCount_longzu').value) || 0;
+      if (yishanCount <= 0 && longzuCount <= 0) { showToast('请至少填写一个项目的件数', true); return; }
+      if (!confirm('确认生成祖龙客服结算？\n以闪亮之名：' + yishanCount + '件\n龙族：' + longzuCount + '件')) return;
+
+      var ym = getZlYearMonth();
+      var btn = document.getElementById('zlGenerateBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading-spin"></i> 生成中...';
+      lucide.createIcons();
+      showToast('正在生成结算文件...');
+
+      fetch('/api/settlement/zulong/generate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({year: ym.year, month: ym.month, counts: {yishan: yishanCount, longzu: longzuCount}}),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="sparkles" style="width:14px;height:14px;"></i> 生成结算';
+        if (data.status !== 'success') { showToast(data.message || '生成失败', true); return; }
+        var html = '<div style="color:#10b981;margin-bottom:4px;">生成成功</div>';
+        (data.files || []).forEach(function(f) {
+          html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;">'
+            + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
+        });
+        document.getElementById('zlResults').innerHTML = html;
+        updateZlInvoiceDisplay();
+        lucide.createIcons();
+        showToast('已生成 ' + data.files.length + ' 个文件');
+        loadZlFileTree();
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); btn.disabled = false; });
+    }
+
+    function loadZlFileTree() {
+      var ym = getZlYearMonth();
+      var treeEl = document.getElementById('zlFileTreeContent');
+      if (!treeEl) return;
+      treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>';
+      fetch('/api/settlement-files?project=zulong&year=' + ym.year + '&month=' + ym.month)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status !== 'success' || !data.data || data.data.length === 0) {
+          treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          return;
+        }
+        var html = '';
+        data.data.forEach(function(f) {
+          var encodedPath = encodeURIComponent(f.path);
+          var date = new Date(f.mtime * 1000);
+          var dateStr = (date.getMonth() + 1) + '/' + date.getDate();
+          var isDocx = f.name.endsWith('.docx');
+          var isPdf = f.name.endsWith('.pdf');
+          var icon = isPdf ? 'file-text' : (isDocx ? 'file-text' : 'file-spreadsheet');
+          html += '<div class="history-file-item" data-path="' + encodedPath + '">'
+            + '<i data-lucide="' + icon + '" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')"></i>'
+            + '<span class="history-file-name" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')">' + escHtml(f.name) + '</span>'
+            + '<span class="history-file-date">' + dateStr + '</span>'
+            + '<button class="history-file-copy" onclick="copySettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" title="复制文件">'
+            + '<i data-lucide="copy"></i></button>'
+            + '<button class="history-file-delete" onclick="deleteSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\', this)" title="删除文件">'
+            + '<i data-lucide="trash-2"></i></button>'
+            + '</div>';
+        });
+        treeEl.innerHTML = html;
+        lucide.createIcons();
+      }).catch(function() { treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载失败</div>'; });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var workspaceHash = window.location.hash.replace('#', '');
+      if (workspaceHash === 'quote-all' || workspaceHash === 'settlement-workbench' || workspaceHash === 'zulong-settlement') {
+        switchPage(workspaceHash);
+      }
+      if ({{ selected_project.key | tojson }} === 'zulong' && !workspaceHash) {
+        switchPage('zulong-settlement');
+      }
+    });
+
+    // ===== 设置弹窗 =====
+    function openSettings() {
+      var modal = document.getElementById('settingsModal');
+      modal.style.display = 'flex';
+      updateThemeBtns();
+      fetch('/api/base-paths')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.status === 'success') {
+            document.getElementById('settingsQuotePath').value = data.quote_history_base || '';
+            document.getElementById('settingsSettlePath').value = data.settlement_base || '';
+          }
+        }).catch(function() {});
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').style.display = 'none';
+    }
+
+    function browseFolder(inputId) {
+      if (window.electronAPI && window.electronAPI.selectFolder) {
+        window.electronAPI.selectFolder().then(function(result) {
+          if (result && !result.canceled && result.filePath) {
+            document.getElementById(inputId).value = result.filePath;
+          }
+        }).catch(function() {});
+      } else {
+        showToast('请在桌面应用中使用浏览功能', true);
+      }
+    }
+
+    function saveSettings() {
+      var quotePath = document.getElementById('settingsQuotePath').value.trim();
+      var settlePath = document.getElementById('settingsSettlePath').value.trim();
+      var body = {};
+      if (quotePath) body.quote_history_base = quotePath;
+      if (settlePath) body.settlement_base = settlePath;
+
+      fetch('/api/base-paths', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success') {
+          showToast('路径设置已保存');
+          closeSettings();
+          loadQuoteHistory();
+          var wbftp = document.getElementById('wbFileTreePanel');
+          if (wbftp && wbftp.style.display !== 'none') loadWbFileTree();
+          refreshSettleSidebar();
+        } else {
+          showToast('保存失败: ' + (data.message || ''), true);
+        }
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); });
+    }
+
+    document.getElementById('settingsModal').addEventListener('click', function(e) {
+      if (e.target === this) closeSettings();
+    });
+  </script>

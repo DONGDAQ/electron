@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>报价助手</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --primary: #0084ff;
+      --bg: #f5f5f5;
+      --chat-bg: #efeff4;
+      --user-bg: #0084ff;
+      --bot-bg: #ffffff;
+      --text: #1a1a1a;
+      --muted: #8e8e93;
+      --border: #d1d1d6;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--chat-bg);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .message {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 16px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    
+    .message.user {
+      background: var(--user-bg);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .message.bot {
+      background: var(--bot-bg);
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    .message .file-item {
+      background: rgba(0,0,0,0.05);
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .message .file-item i {
+      width: 20px;
+      height: 20px;
+      color: var(--primary);
+    }
+    
+    .message.success {
+      background: #34c759;
+      color: white;
+    }
+    
+    .message.error {
+      background: #ff3b30;
+      color: white;
+    }
+    
+    .message .quote-info {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .message.bot .quote-info {
+      border-top: 1px solid var(--border);
+    }
+    
+    .message .quote-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    
+    .message .quote-total {
+      font-weight: 600;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.3);
+    }
+    
+    .message.bot .quote-total {
+      border-top: 1px solid var(--border);
+    }
+    
+    .message .download-btn {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 20px;
+      background: var(--primary);
+      color: white;
+      border-radius: 20px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .message .download-btn:hover {
+      background: #0073e6;
+    }
+    
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 12px 14px;
+    }
+    
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: var(--muted);
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+    
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    
+    @keyframes typing {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+    
+    .input-area {
+      background: var(--chat-bg);
+      padding: 8px 12px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+    }
+    
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    
+    .input-wrapper {
+      flex: 1;
+      background: white;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+    }
+    
+    .input-wrapper textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      font-size: 16px;
+      max-height: 100px;
+      line-height: 1.4;
+    }
+    
+    .send-btn {
+      width: 44px;
+      height: 44px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .send-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .attach-btn {
+      width: 44px;
+      height: 44px;
+      background: #e5e5ea;
+      color: var(--muted);
+      border: none;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    
+    .attach-btn svg {
+      width: 22px;
+      height: 22px;
+    }
+    
+    .input-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+    
+    .file-input {
+      display: none;
+    }
+    
+    .welcome-message {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+    }
+    
+    .welcome-message h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">📱 报价助手</div>
+  
+  <div class="chat-container" id="chatContainer">
+    <div class="welcome-message">
+      <h3>👋 你好</h3>
+      <p>告诉我项目名称、日期需求，我来帮你生成报价单</p>
+      <p style="margin-top: 8px; font-size: 13px;">例如：马娘昨天的需求，明天交付</p>
+    </div>
+  </div>
+  
+  <div class="input-area">
+    <input type="file" id="fileInput" class="file-input" accept=".html,.htm" multiple>
+    <div class="input-row">
+      <button class="attach-btn" id="attachBtn" title="上传文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
+      <div class="input-wrapper">
+        <textarea id="messageInput" placeholder="输入需求描述..." rows="1"></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint">支持上传 HTML 文件</div>
+  </div>
+
+  <script>
+    const chatContainer = document.getElementById('chatContainer');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const fileInput = document.getElementById('fileInput');
+    const attachBtn = document.getElementById('attachBtn');
+    
+    let uploadedFiles = [];
+    let currentProject = null;
+    let currentDemandDate = null;
+    let currentDeliveryDate = null;
+    
+    const welcomeMsg = chatContainer.querySelector('.welcome-message');
+    
+    function autoResize() {
+      messageInput.style.height = 'auto';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 100) + 'px';
+    }
+    
+    messageInput.addEventListener('input', () => {
+      autoResize();
+      sendBtn.disabled = !messageInput.value.trim() && uploadedFiles.length === 0;
+    });
+    
+    attachBtn.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        addUserMessage(messageInput.value.trim(), files);
+        messageInput.value = '';
+        autoResize();
+        sendBtn.disabled = true;
+        fileInput.value = '';
+      }
+    });
+    
+    sendBtn.addEventListener('click', () => {
+      const text = messageInput.value.trim();
+      if (text || uploadedFiles.length > 0) {
+        addUserMessage(text, uploadedFiles);
+        messageInput.value = '';
+        autoResize();
+        sendBtn.disabled = true;
+      }
+    });
+    
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+    
+    function addUserMessage(text, files) {
+      if (welcomeMsg) welcomeMsg.remove();
+      
+      uploadedFiles = [];
+      
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message user';
+      
+      let html = '';
+      if (text) html += `<div>${escapeHtml(text)}</div>`;
+      
+      files.forEach(file => {
+        uploadedFiles.push(file);
+        html += `
+          <div class="file-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>${escapeHtml(file.name)}</span>
+          </div>
+        `;
+      });
+      
+      msgDiv.innerHTML = html;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+      
+      if (text) {
+        processUserMessage(text, files);
+      }
+    }
+    
+    function addBotMessage(content, type = '') {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message bot' + (type ? ' ' + type : '');
+      msgDiv.innerHTML = content;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+    
+    function addTypingIndicator() {
+      const typingDiv = document.createElement('div');
+      typingDiv.className = 'message bot';
+      typingDiv.id = 'typingIndicator';
+      typingDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      chatContainer.appendChild(typingDiv);
+      scrollToBottom();
+    }
+    
+    function removeTypingIndicator() {
+      const typing = document.getElementById('typingIndicator');
+      if (typing) typing.remove();
+    }
+    
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    function processUserMessage(text, files) {
+      addTypingIndicator();
+      
+      const formData = new FormData();
+      formData.append('message', text);
+      
+      if (files.length > 0) {
+        files.forEach(file => formData.append('files', file));
+      }
+      
+      if (currentProject) formData.append('project', currentProject);
+      if (currentDemandDate) formData.append('demand_date', currentDemandDate);
+      if (currentDeliveryDate) formData.append('delivery_date', currentDeliveryDate);
+      
+      fetch('/mobile/generate', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        removeTypingIndicator();
+        
+        if (data.status === 'success') {
+          currentProject = data.project;
+          currentDemandDate = data.demand_date;
+          currentDeliveryDate = data.delivery_date;
+          
+          let html = data.message;
+          
+          if (data.quote_info) {
+            html += '<div class="quote-info">';
+            data.quote_info.items.forEach(item => {
+              html += `<div class="quote-item"><span>${escapeHtml(item.language)}</span><span>${item.words} 字 × ¥${item.price} = ¥${item.subtotal}</span></div>`;
+            });
+            html += `<div class="quote-item quote-total"><span>合计</span><span>¥${data.quote_info.total}</span></div>`;
+          }
+          
+          if (data.download_url) {
+            html += `<a href="${data.download_url}" class="download-btn" target="_blank">下载报价单</a>`;
+          }
+          
+          addBotMessage(html, data.quote_info ? 'success' : '');
+        } else {
+          addBotMessage(data.message || '处理失败，请重试', 'error');
+        }
+      })
+      .catch(err => {
+        removeTypingIndicator();
+        addBotMessage('网络错误: ' + err.message, 'error');
+      });
+    }
+    
+    messageInput.focus();
+  </script>
+</body>
+</html>

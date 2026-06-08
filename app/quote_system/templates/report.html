@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>报价报告 - 翻译报价系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ range(10000)|random }}">
+  <script src="{{ url_for('static', filename='lucide.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  <style>
+    .report-layout { display:flex; flex-direction:column; height:100%; }
+    .report-toolbar { display:flex; align-items:center; gap:12px; padding:16px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
+    .report-toolbar h2 { margin:0; font-size:18px; font-weight:600; }
+    .report-tabs { display:flex; gap:4px; margin-left:24px; background:var(--bg); border-radius:8px; padding:3px; }
+    .report-tab { padding:6px 16px; border:none; border-radius:6px; background:transparent; color:var(--muted); font-size:13px; cursor:pointer; transition:all .15s; }
+    .report-tab.active { background:var(--panel); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08); font-weight:500; }
+    .report-search { margin-left:auto; position:relative; }
+    .report-search input { padding:6px 12px 6px 32px; border:1px solid var(--line); border-radius:6px; background:var(--bg); font-size:13px; width:220px; outline:none; }
+    .report-search input:focus { border-color:var(--accent); }
+    .report-search .search-icon { position:absolute; left:9px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--muted); pointer-events:none; }
+    .report-body { flex:1; overflow-y:auto; padding:20px 24px; }
+    .report-empty { text-align:center; padding:60px 20px; color:var(--muted); }
+    .report-empty i { width:48px; height:48px; margin-bottom:12px; }
+    .report-empty p { font-size:14px; margin:0; }
+
+    /* 项目分组 */
+    .report-company-group { margin-bottom:28px; }
+    .report-company-header { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); margin-bottom:12px; }
+    .report-company-header i { width:18px; height:18px; color:var(--muted); }
+    .report-company-header h3 { margin:0; font-size:15px; font-weight:600; }
+    .report-company-header .count { margin-left:auto; font-size:12px; color:var(--muted); }
+    .report-project-group { margin-bottom:12px; margin-left:4px; }
+    .report-project-header { display:flex; align-items:center; gap:6px; padding:6px 8px; font-size:13px; font-weight:500; cursor:pointer; border-radius:6px; user-select:none; }
+    .report-project-header:hover { background:var(--bg); }
+    .report-project-header i { width:16px; height:16px; transition:transform .15s; color:var(--muted); }
+    .report-project-header.collapsed i { transform:rotate(-90deg); }
+    .report-project-header .count { margin-left:auto; font-size:11px; color:var(--muted); background:var(--bg); padding:1px 8px; border-radius:10px; }
+    .report-file-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:4px; margin-left:28px; }
+
+    .report-file-row { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:6px; cursor:pointer; transition:background .12s; border:1px solid transparent; }
+    .report-file-row:hover { background:var(--bg); border-color:var(--line); }
+    .report-file-row .file-icon { width:20px; height:20px; flex-shrink:0; color:var(--accent); }
+    .report-file-row .file-info { flex:1; min-width:0; }
+    .report-file-row .file-name { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .report-file-row .file-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+    .report-file-row .file-actions { display:flex; gap:2px; opacity:0; transition:opacity .12s; }
+    .report-file-row:hover .file-actions { opacity:1; }
+    .report-file-row .file-actions button { padding:4px; border:none; border-radius:4px; background:transparent; cursor:pointer; color:var(--muted); display:flex; align-items:center; }
+    .report-file-row .file-actions button:hover { background:var(--bg); color:var(--ink); }
+    .report-file-row .file-actions button.danger:hover { color:var(--danger); }
+    .report-file-row .file-actions i { width:16px; height:16px; }
+
+    /* 最近文件列表 */
+    .recent-list { display:grid; gap:2px; }
+    .recent-item { display:flex; align-items:center; gap:12px; padding:9px 14px; border-radius:6px; cursor:pointer; transition:background .12s; }
+    .recent-item:hover { background:var(--bg); }
+    .recent-item .file-icon { width:18px; height:18px; flex-shrink:0; color:var(--accent); }
+    .recent-item .file-info { flex:1; min-width:0; }
+    .recent-item .file-name { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .recent-item .file-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+    .recent-item .file-project { font-size:11px; padding:2px 8px; border-radius:4px; background:var(--bg); color:var(--muted); flex-shrink:0; }
+    .recent-item .file-size { font-size:11px; color:var(--muted); flex-shrink:0; min-width:56px; text-align:right; }
+    .recent-item .file-actions { display:flex; gap:2px; opacity:0; transition:opacity .12s; }
+    .recent-item:hover .file-actions { opacity:1; }
+    .recent-item .file-actions button { padding:4px; border:none; border-radius:4px; background:transparent; cursor:pointer; color:var(--muted); display:flex; align-items:center; }
+    .recent-item .file-actions button:hover { background:var(--bg); color:var(--ink); }
+    .recent-item .file-actions button.danger:hover { color:var(--danger); }
+    .recent-item .file-actions i { width:16px; height:16px; }
+
+    /* 执行记录 */
+    .log-list { display:grid; gap:6px; }
+    .log-item { border:1px solid var(--line); border-radius:8px; overflow:hidden; transition:border-color .12s; }
+    .log-item:hover { border-color:#94a3b8; }
+    .log-header { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; user-select:none; }
+    .log-header .log-status { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .log-status.success { background:#10b981; }
+    .log-status.error { background:#ef4444; }
+    .log-header .log-project { font-size:12px; font-weight:500; padding:2px 8px; border-radius:4px; background:var(--bg); color:var(--muted); flex-shrink:0; }
+    .log-header .log-time { font-size:12px; color:var(--muted); flex-shrink:0; }
+    .log-header .log-summary { flex:1; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0 8px; }
+    .log-header .log-toggle { font-size:11px; color:var(--accent); flex-shrink:0; }
+    .log-body { display:none; border-top:1px solid var(--line); background:#1a1f2e; }
+    .log-body.open { display:block; }
+    .log-body pre { margin:0; padding:14px; font-size:12px; line-height:1.6; color:#e2e8f0; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto; }
+
+    /* 报价记录表格 */
+    .records-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+    .records-table th { position:sticky; top:0; background:var(--panel); padding:8px 12px; text-align:left; font-weight:500; color:var(--muted); border-bottom:1px solid var(--line); cursor:pointer; user-select:none; white-space:nowrap; }
+    .records-table th:hover { color:var(--ink); }
+    .records-table th .sort-arrow { font-size:10px; margin-left:4px; opacity:.4; }
+    .records-table th.sorted .sort-arrow { opacity:1; color:var(--accent); }
+    .records-table td { padding:7px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+    .records-table tr:hover td { background:var(--bg); }
+    .records-table .source-tag { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:500; }
+    .records-table .source-tag.manual { background:#3b82f620; color:#60a5fa; }
+    .records-table .source-tag.mobile { background:#8b5cf620; color:#a78bfa; }
+    .records-table .source-tag.auto { background:#10b98120; color:#34d399; }
+    .records-table .source-tag.batch { background:#f59e0b20; color:#fbbf24; }
+    .records-table .settled-yes { color:#10b981; }
+    .records-table .settled-no { color:var(--muted); }
+
+    /* 方案3 双栏布局 */
+    .records-dual { display:flex; height:100%; overflow:hidden; }
+    .records-project-panel { width:220px; border-right:1px solid var(--line); overflow-y:auto; padding:12px; flex-shrink:0; }
+    .records-panel-header { font-size:12px; color:var(--muted); font-weight:500; padding:4px 8px; margin-bottom:8px; }
+    .records-project-card { padding:10px 12px; border-radius:8px; cursor:pointer; margin-bottom:4px; transition:all .12s; border:1px solid transparent; }
+    .records-project-card:hover { background:var(--nav-hover); border-color:var(--line); }
+    .records-project-card.selected { background:var(--accent-soft); border-color:var(--accent); }
+    .records-project-card .rp-name { font-size:13px; font-weight:500; color:var(--ink); margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+    .records-project-card .rp-stats { font-size:11px; color:var(--muted); display:flex; gap:12px; }
+    .records-project-card .rp-pending { color:#f59e0b; }
+    .records-project-card .rp-done { color:#10b981; }
+    .records-project-card .rp-amount { font-size:12px; color:var(--muted); margin-top:2px; }
+    .records-detail { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .records-detail-header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); flex-shrink:0; }
+    .records-detail-title { font-size:15px; font-weight:600; }
+    .records-detail-body { flex:1; overflow-y:auto; }
+    .records-detail-summary { padding:10px 16px; border-top:1px solid var(--line); display:flex; align-items:center; gap:20px; background:var(--panel); flex-shrink:0; }
+    .records-summary-item { font-size:12px; }
+    .records-summary-item .rs-label { color:var(--muted); margin-right:4px; }
+    .records-summary-item .rs-value { font-weight:600; color:var(--ink); }
+    .records-summary-item .rs-warn { color:#f59e0b; }
+    .records-row-settled td { opacity:.45; }
+    .records-status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+    .records-status-dot.green { background:#10b981; }
+    .records-status-dot.gray { background:#64748b; }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div><h1>翻译报价系统</h1></div>
+      </div>
+      <nav class="project-nav" aria-label="项目">
+        {% for company, projects in projects_by_company.items() %}
+          <div class="company-group">
+            <div class="company-header" onclick="toggleSidebarCompany(this)">
+              <i data-lucide="chevron-down" class="company-chevron"></i>
+              <i data-lucide="building"></i>
+              <span>{{ company }}</span>
+            </div>
+            <div class="project-list">
+              {% for project in projects %}
+                <a class="project-link" href="{{ url_for('index', project=project.key) }}">
+                  <span>{{ project.display_name }}</span>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </nav>
+      <div style="padding:8px;border-top:1px solid rgba(255,255,255,.06);margin-top:auto;">
+        <a class="project-link" href="{{ url_for('index') }}#quote-all">
+          <i data-lucide="zap"></i>
+          一键报价
+        </a>
+        <a class="project-link" href="{{ url_for('index') }}#settlement-workbench">
+          <i data-lucide="bar-chart-big"></i>
+          月度结算
+        </a>
+        <a class="project-link active" href="{{ url_for('report_page') }}">
+          <i data-lucide="file-text"></i>
+          报价报告
+        </a>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <div class="report-layout">
+        <div class="report-toolbar">
+          <h2>报价报告</h2>
+          <div class="report-tabs">
+            <button class="report-tab active" data-tab="project" onclick="switchReportTab('project')">按项目</button>
+            <button class="report-tab" data-tab="recent" onclick="switchReportTab('recent')">最近文件</button>
+            <button class="report-tab" data-tab="logs" onclick="switchReportTab('logs')">执行记录</button>
+            <button class="report-tab" data-tab="records" onclick="switchReportTab('records')">报价记录</button>
+          </div>
+          <div class="report-search">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" id="reportSearch" placeholder="搜索..." oninput="filterReports()">
+          </div>
+          <button class="icon-button" onclick="toggleTheme()" title="切换主题" style="margin-left:8px;">
+            <i data-lucide="moon" id="themeIcon"></i>
+          </button>
+        </div>
+
+        <div class="report-body" id="reportBody">
+          <div class="report-loading" style="text-align:center;padding:60px;color:var(--muted);">
+            <i data-lucide="loader" class="loading" style="width:32px;height:32px;"></i>
+            <p style="margin-top:12px;">加载中...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function(){
+      var t = localStorage.getItem('theme') || 'dark';
+      if (t === 'light') document.body.classList.add('light-theme');
+    })();
+
+    function toggleTheme() {
+      var isLight = document.body.classList.toggle('light-theme');
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+      var icon = document.getElementById('themeIcon');
+      if (icon) icon.setAttribute('data-lucide', isLight ? 'sun' : 'moon');
+      try { lucide.createIcons(); } catch(e) {}
+    }
+
+    lucide.createIcons();
+    (function(){ var ic=document.getElementById('themeIcon'); if(ic) ic.setAttribute('data-lucide', document.body.classList.contains('light-theme')?'sun':'moon'); lucide.createIcons(); })();
+
+    let allProjectData = null;
+    let allRecentData = null;
+    let allLogData = null;
+    let allRecordsData = null;
+    let currentTab = 'project';
+    let recordsSortKey = 'quote_date';
+    let recordsSortAsc = false;
+    let selectedRecordProject = '';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      bindReportFileActions();
+      loadReportData();
+    });
+
+    function loadReportData() {
+      Promise.all([
+        fetch('/quote-history').then(r => r.json()),
+        fetch('/api/all-quotes').then(r => r.json()),
+        fetch('/api/auto-quote-logs').then(r => r.json()),
+        fetch('/api/quote-records').then(r => r.json()),
+      ]).then(([projectRes, recentRes, logRes, recordsRes]) => {
+        if (projectRes.status === 'success') allProjectData = projectRes.data || [];
+        if (recentRes.status === 'success') allRecentData = recentRes.data || [];
+        if (logRes.status === 'success') allLogData = logRes.data || [];
+        if (recordsRes.status === 'success') allRecordsData = recordsRes.data || [];
+        renderCurrentTab();
+      }).catch(err => {
+        document.getElementById('reportBody').innerHTML =
+          '<div class="report-empty"><i data-lucide="alert-circle"></i><p>加载失败: ' + err.message + '</p></div>';
+        lucide.createIcons();
+      });
+    }
+
+    function switchReportTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.report-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      document.getElementById('reportSearch').value = '';
+      renderCurrentTab();
+    }
+
+    function renderCurrentTab() {
+      if (currentTab === 'project') renderProjectView();
+      else if (currentTab === 'recent') renderRecentView();
+      else if (currentTab === 'logs') renderLogView();
+      else renderRecordsView();
+    }
+
+    function renderProjectView() {
+      const body = document.getElementById('reportBody');
+      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
+      if (!allProjectData || allProjectData.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="folder-open"></i><p>暂无报价单记录</p></div>';
+        lucide.createIcons(); return;
+      }
+      let html = '';
+      allProjectData.forEach(company => {
+        // 统计该公司下所有文件
+        let totalFiles = 0;
+        const projectFolders = (company.folders || []).filter(f => {
+          if (!search) return true;
+          const match = (f.files || []).some(file => file.name.toLowerCase().includes(search));
+          if (match) f.files.forEach(file => { if (file.name.toLowerCase().includes(search)) totalFiles++; });
+          return match;
+        });
+        // 不过滤搜索时统计全部
+        if (!search) {
+          (company.folders || []).forEach(f => totalFiles += (f.files || []).length);
+        }
+        if (projectFolders.length === 0 && search) return;
+
+        html += '<div class="report-company-group">'
+          + '<div class="report-company-header" onclick="toggleCompany(this)" style="cursor:pointer;user-select:none;">'
+          + '<i data-lucide="chevron-down" class="company-chevron" style="width:16px;height:16px;transition:transform.15s;"></i>'
+          + '<i data-lucide="building" style="width:18px;height:18px;color:var(--muted);"></i>'
+          + '<h3>' + escHtml(company.name) + '</h3>'
+          + '<span class="count">' + totalFiles + ' 个文件</span>'
+          + '</div>';
+
+        // 公司下按项目分组
+        (projectFolders.length ? projectFolders : (company.folders || [])).forEach(project => {
+          const projectFiles = search
+            ? (project.files || []).filter(f => f.name.toLowerCase().includes(search))
+            : (project.files || []);
+          if (projectFiles.length === 0 && search) return;
+
+          html += '<div class="report-project-group">'
+            + '<div class="report-project-header" onclick="toggleProject(this)">'
+            + '<i data-lucide="chevron-right"></i>'
+            + '<span>' + escHtml(project.name) + '</span>'
+            + '<span class="count">' + projectFiles.length + '</span>'
+            + '</div>'
+            + '<div class="report-file-grid">';
+          projectFiles.forEach(file => html += renderFileCard(file, project.name));
+          html += '</div></div>';
+        });
+
+        html += '</div>';
+      });
+      body.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function toggleCompany(header) {
+      header.classList.toggle('collapsed');
+      const chevron = header.querySelector('.company-chevron');
+      if (chevron) chevron.style.transform = header.classList.contains('collapsed') ? 'rotate(-90deg)' : '';
+      let sibling = header.nextElementSibling;
+      while (sibling) {
+        if (sibling.classList.contains('report-company-group')) break;
+        sibling.style.display = header.classList.contains('collapsed') ? 'none' : '';
+        sibling = sibling.nextElementSibling;
+      }
+    }
+
+    function toggleProject(header) {
+      header.classList.toggle('collapsed');
+      const grid = header.nextElementSibling;
+      if (grid) grid.style.display = header.classList.contains('collapsed') ? 'none' : '';
+    }
+
+    function renderFileCard(file, projectLabel) {
+      const dt = new Date(file.mtime * 1000);
+      const dateStr = fmtDateTime(dt);
+      const sizeStr = fmtSize(file.size);
+      const p = escHtml(encodeURIComponent(file.path));
+      return '<div class="report-file-row" data-path="' + p + '">'
+        + '<i data-lucide="file-spreadsheet" class="file-icon" data-action="open"></i>'
+        + '<div class="file-info" data-action="open">'
+        + '<div class="file-name">' + escHtml(file.name) + '</div>'
+        + '<div class="file-meta">' + escHtml(projectLabel || '') + ' · ' + dateStr + ' · ' + sizeStr + '</div>'
+        + '</div>'
+        + '<div class="file-actions">'
+        + '<button data-action="open" title="打开"><i data-lucide="external-link"></i></button>'
+        + '<button data-action="folder" title="打开所在文件夹"><i data-lucide="folder-open"></i></button>'
+        + '<button class="danger" data-action="delete" title="删除"><i data-lucide="trash-2"></i></button>'
+        + '</div></div>';
+    }
+
+    function renderRecentView() {
+      const body = document.getElementById('reportBody');
+      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
+      if (!allRecentData || allRecentData.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="folder-open"></i><p>暂无报价单记录</p></div>';
+        lucide.createIcons(); return;
+      }
+      let data = search ? allRecentData.filter(f => f.name.toLowerCase().includes(search)) : allRecentData;
+      if (data.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="search"></i><p>没有匹配的报价单</p></div>';
+        lucide.createIcons(); return;
+      }
+      let html = '<div class="recent-list">';
+      data.forEach(f => {
+        const dt = new Date(f.mtime * 1000);
+        const dateStr = fmtDateTime(dt);
+        const sizeStr = fmtSize(f.size);
+        const p = escHtml(encodeURIComponent(f.path));
+        html += '<div class="recent-item" data-path="' + p + '">'
+          + '<i data-lucide="file-spreadsheet" class="file-icon" data-action="open"></i>'
+          + '<div class="file-info" data-action="open">'
+          + '<div class="file-name">' + escHtml(f.name) + '</div>'
+          + '<div class="file-meta">' + dateStr + '</div>'
+          + '</div>'
+          + '<span class="file-project">' + escHtml(f.project || '未分类') + '</span>'
+          + '<span class="file-size">' + sizeStr + '</span>'
+          + '<div class="file-actions">'
+          + '<button data-action="open" title="打开"><i data-lucide="external-link"></i></button>'
+          + '<button data-action="folder" title="打开所在文件夹"><i data-lucide="folder-open"></i></button>'
+          + '<button class="danger" data-action="delete" title="删除"><i data-lucide="trash-2"></i></button>'
+          + '</div></div>';
+      });
+      html += '</div>';
+      body.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function renderLogView() {
+      const body = document.getElementById('reportBody');
+      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
+      if (!allLogData || allLogData.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="terminal"></i><p>暂无执行记录</p></div>';
+        lucide.createIcons(); return;
+      }
+      let data = search ? allLogData.filter(l => (l.project||'').toLowerCase().includes(search) || (l.summary||'').toLowerCase().includes(search)) : allLogData;
+      if (data.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="search"></i><p>没有匹配的记录</p></div>';
+        lucide.createIcons(); return;
+      }
+      let html = '<div class="log-list">';
+      data.forEach((log, i) => {
+        const dt = new Date(log.timestamp);
+        const timeStr = fmtDateTime(dt);
+        const proj = escHtml(LOG_LABELS[log.project] || log.project);
+        html += '<div class="log-item">'
+          + '<div class="log-header" onclick="toggleLog(this)">'
+          + '<span class="log-status ' + escHtml(log.status) + '"></span>'
+          + '<span class="log-project">' + proj + '</span>'
+          + '<span class="log-time">' + timeStr + '</span>'
+          + '<span class="log-summary">' + escHtml(log.summary || '') + '</span>'
+          + '<span class="log-toggle">展开日志</span>'
+          + '</div>'
+          + '<div class="log-body" data-path="' + encodeURIComponent(log.log_file) + '">'
+          + '<pre>加载中...</pre>'
+          + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      body.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function toggleLog(header) {
+      const body = header.nextElementSibling;
+      const toggle = header.querySelector('.log-toggle');
+      if (body.classList.contains('open')) {
+        body.classList.remove('open');
+        toggle.textContent = '展开日志';
+        return;
+      }
+      body.classList.add('open');
+      toggle.textContent = '收起日志';
+      // 懒加载日志内容
+      const pre = body.querySelector('pre');
+      if (pre && pre.textContent === '加载中...') {
+        const path = decodeURIComponent(body.dataset.path);
+        fetch('/api/auto-quote-log-content?path=' + encodeURIComponent(path))
+          .then(r => r.json())
+          .then(d => { if (d.status === 'success') pre.textContent = d.content; else pre.textContent = '加载失败: ' + d.message; })
+          .catch(e => pre.textContent = '加载失败: ' + e.message);
+      }
+    }
+
+    const LOG_LABELS = {
+      huanta: '幻塔', yihuan_nei: '异环游戏内', yihuan_faxing: '异环发行',
+      zhan_shuang: '战双邮件', zhan_shuang_feishu: '战双飞书', '4399': '4399 填表',
+    };
+
+    const SOURCE_LABELS = { manual: '手动', mobile: '移动端', auto: '自动', batch: '批次' };
+    const PROJECT_LABELS = {
+      huanta: '幻塔', yihuan_nei: '异环游戏内', yihuan_faxing: '异环发行',
+      zhan_shuang: '战双版更', zhan_shuang_faxing: '战双发行',
+      umamusume: '马娘', bang2: 'BANG2', hbr: '炽焰天穹', tk: 'TK',
+      liandishenkong: '恋与深空', shining_nikki: '闪暖', niki_xinzuo: 'ニキ新作',
+      '4399': '4399', zulong: '祖龙',
+    };
+
+    function renderRecordsView() {
+      const body = document.getElementById('reportBody');
+      if (!allRecordsData || allRecordsData.length === 0) {
+        body.innerHTML = '<div class="report-empty"><i data-lucide="clipboard-list"></i><p>暂无报价记录</p></div>';
+        lucide.createIcons(); return;
+      }
+
+      const projects = {};
+      allRecordsData.forEach(r => {
+        const pk = r.project_key || 'unknown';
+        if (!projects[pk]) projects[pk] = { records: [], totalWords: 0, totalAmount: 0, pending: 0, settled: 0 };
+        projects[pk].records.push(r);
+        projects[pk].totalWords += (r.billable_words || 0);
+        projects[pk].totalAmount += (r.total_price || 0);
+        if (r.settled) projects[pk].settled++; else projects[pk].pending++;
+      });
+
+      const projKeys = Object.keys(projects).sort((a, b) => {
+        if (projects[b].pending !== projects[a].pending) return projects[b].pending - projects[a].pending;
+        return projects[b].records.length - projects[a].records.length;
+      });
+
+      if (!selectedRecordProject || !projects[selectedRecordProject]) {
+        selectedRecordProject = projKeys[0] || '';
+      }
+
+      let html = '<div class="records-dual">';
+
+      html += '<div class="records-project-panel"><div class="records-panel-header">📊 项目汇总</div>';
+      projKeys.forEach(pk => {
+        const p = projects[pk];
+        const sel = pk === selectedRecordProject ? ' selected' : '';
+        const statusIcon = p.pending > 0 ? '🟢' : '<span class="records-status-dot gray" style="display:inline-block;width:8px;height:8px;border-radius:50%;"></span>';
+        const statusText = p.pending > 0
+          ? '<span class="rp-pending">未结算 ' + p.pending + '</span>'
+          : '<span class="rp-done">全部已结算</span>';
+        const amountStr = p.totalAmount > 0 ? '¥' + p.totalAmount.toLocaleString() : '-';
+        html += '<div class="records-project-card' + sel + '" onclick="selectRecordProject(\'' + escHtml(pk) + '\')">'
+          + '<div class="rp-name">' + statusIcon + ' ' + escHtml(PROJECT_LABELS[pk] || pk) + '</div>'
+          + '<div class="rp-stats"><span>' + p.records.length + ' 条</span>' + statusText + '</div>'
+          + '<div class="rp-amount">' + amountStr + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+
+      html += '<div class="records-detail">';
+      const sp = projects[selectedRecordProject];
+      if (sp) {
+        const projName = PROJECT_LABELS[selectedRecordProject] || selectedRecordProject;
+        html += '<div class="records-detail-header">'
+          + '<span class="records-detail-title">' + escHtml(projName) + '</span>'
+          + '<div style="margin-left:auto;display:flex;gap:8px;">'
+          + '<select class="filter-select" style="padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font-size:12px;" onchange="recordsSortKey=this.value;renderRecordsView()">'
+          + '<option value="quote_date"' + (recordsSortKey==='quote_date'?' selected':'') + '>按委托日</option>'
+          + '<option value="delivery_date"' + (recordsSortKey==='delivery_date'?' selected':'') + '>按交付日</option>'
+          + '<option value="total_price"' + (recordsSortKey==='total_price'?' selected':'') + '>按金额</option>'
+          + '</select>'
+          + '</div></div>';
+
+        const search = document.getElementById('reportSearch').value.toLowerCase().trim();
+        let detailData = sp.records;
+        if (search) detailData = detailData.filter(r => (r.req_name||'').toLowerCase().includes(search));
+        detailData = [...detailData].sort((a, b) => {
+          let va = a[recordsSortKey] ?? '', vb = b[recordsSortKey] ?? '';
+          if (typeof va === 'number') return recordsSortAsc ? va - vb : vb - va;
+          return recordsSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+        });
+
+        html += '<div class="records-detail-body"><table class="records-table"><thead><tr>';
+        html += '<th style="width:30px;"></th>';
+        [{k:'req_name',l:'需求名',w:'auto'},{k:'quote_date',l:'委托日',w:'80px'},{k:'delivery_date',l:'交付日',w:'80px'},{k:'source',l:'来源',w:'50px'},{k:'billable_words',l:'字数',w:'70px'},{k:'total_price',l:'总额',w:'80px'}].forEach(c => {
+          const sorted = recordsSortKey === c.k;
+          const arrow = sorted ? (recordsSortAsc ? '▲' : '▼') : '▲';
+          html += '<th class="' + (sorted ? 'sorted' : '') + '" style="width:' + c.w + '" onclick="sortRecords(\'' + c.k + '\')">'
+            + c.l + '<span class="sort-arrow">' + arrow + '</span></th>';
+        });
+        html += '</tr></thead><tbody>';
+        detailData.forEach(r => {
+          const src = r.source || 'manual';
+          const dotClass = r.settled ? 'gray' : 'green';
+          const rowClass = r.settled ? ' records-row-settled' : '';
+          html += '<tr class="' + rowClass + '">'
+            + '<td><span class="records-status-dot ' + dotClass + '"></span></td>'
+            + '<td title="' + escHtml(r.req_name) + '">' + escHtml((r.req_name||'').length > 35 ? r.req_name.slice(0,35)+'...' : r.req_name) + '</td>'
+            + '<td style="color:var(--muted);font-size:12px;">' + escHtml(r.quote_date || '-') + '</td>'
+            + '<td style="color:var(--muted);font-size:12px;">' + escHtml(r.delivery_date || '-') + '</td>'
+            + '<td><span class="source-tag ' + escHtml(src) + '">' + escHtml(SOURCE_LABELS[src] || src) + '</span></td>'
+            + '<td style="text-align:right;color:var(--muted)">' + (r.billable_words || 0).toLocaleString() + '</td>'
+            + '<td style="text-align:right">' + (r.total_price || 0).toFixed(2) + '</td>'
+            + '</tr>';
+        });
+        html += '</tbody></table></div>';
+
+        const pending = sp.pending;
+        const pendingAmount = sp.records.filter(r => !r.settled).reduce((s, r) => s + (r.total_price || 0), 0);
+        html += '<div class="records-detail-summary">'
+          + '<span class="records-summary-item"><span class="rs-label">总记录</span><span class="rs-value">' + sp.records.length + ' 条</span></span>'
+          + '<span class="records-summary-item"><span class="rs-label">总字数</span><span class="rs-value">' + sp.totalWords.toLocaleString() + '</span></span>'
+          + '<span class="records-summary-item"><span class="rs-label">总额</span><span class="rs-value">¥' + sp.totalAmount.toLocaleString() + '</span></span>'
+          + '<span class="records-summary-item"><span class="rs-label">未结算</span><span class="rs-value rs-warn">' + pending + ' 条 · ¥' + pendingAmount.toLocaleString() + '</span></span>'
+          + '</div>';
+      }
+      html += '</div></div>';
+
+      body.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function selectRecordProject(pk) {
+      selectedRecordProject = pk;
+      renderRecordsView();
+    }
+
+    function sortRecords(key) {
+      if (recordsSortKey === key) recordsSortAsc = !recordsSortAsc;
+      else { recordsSortKey = key; recordsSortAsc = false; }
+      renderRecordsView();
+    }
+
+    function filterReports() { renderCurrentTab(); }
+
+    function bindReportFileActions() {
+      const body = document.getElementById('reportBody');
+      body.addEventListener('click', function(e) {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const row = actionEl.closest('[data-path]');
+        if (!row) return;
+        const p = decodeURIComponent(row.dataset.path || '');
+        const action = actionEl.dataset.action;
+        if (action === 'open') openFile(p);
+        else if (action === 'folder') openFolder(p);
+        else if (action === 'delete') delFile(p, actionEl);
+      });
+      body.addEventListener('contextmenu', function(e) {
+        const row = e.target.closest('[data-path]');
+        if (!row) return;
+        e.preventDefault();
+        showCtx(e, decodeURIComponent(row.dataset.path || ''));
+      });
+    }
+
+    function findReportRowByPath(p) {
+      const encoded = encodeURIComponent(p);
+      return Array.from(document.querySelectorAll('[data-path]')).find(el => el.dataset.path === encoded);
+    }
+
+    function openFile(p) {
+      if (window.electronAPI) window.electronAPI.openFile(p);
+      else fetch('/open-file?path=' + encodeURIComponent(p)).then(r=>r.json()).then(d=>{if(d.status!=='success')showToast('打开失败: '+d.message,1);}).catch(e=>showToast('打开失败: '+e.message,1));
+    }
+    function openFolder(p) {
+      if (window.electronAPI) window.electronAPI.openFileLocation(p);
+      else window.open('/open-folder?path=' + encodeURIComponent(p));
+    }
+    function delFile(p, btn) {
+      if (!confirm('确定要删除这个报价单吗？\n' + p.split('\\').pop().split('/').pop())) return;
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+      fetch('/delete-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})})
+        .then(r=>r.json()).then(d=>{
+          if(d.status==='success'){
+            (btn ? btn.closest('.report-file-row,.recent-item') : findReportRowByPath(p))?.remove();
+            showToast('已删除');
+            loadReportData();
+          }else{
+            showToast('删除失败: '+(d.message||'未知错误'),1);
+            if (btn) { btn.disabled=false; btn.style.opacity='1'; }
+          }
+        })
+        .catch(e=>{showToast('删除失败: '+e.message,1); if (btn) { btn.disabled=false; btn.style.opacity='1'; }});
+    }
+
+    function showCtx(e, p) {
+      e.preventDefault();
+      const old = document.querySelector('.context-menu'); if(old) old.remove();
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.style.cssText = 'position:fixed;left:'+e.clientX+'px;top:'+e.clientY+'px;background:#1e2937;border:1px solid #3b4754;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;overflow:hidden;';
+      [
+        {label:'打开文件',icon:'file-spreadsheet',action:()=>openFile(p)},
+        {label:'打开所在文件夹',icon:'folder-open',action:()=>openFolder(p)},
+        {label:'删除',icon:'trash-2',action:()=>delFile(p,null)},
+      ].forEach(item=>{
+        const el=document.createElement('div');
+        el.style.cssText='padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;color:#e2e8f0;transition:background.15s;';
+        el.innerHTML='<i data-lucide="'+item.icon+'" style="width:16px;height:16px;"></i><span>'+item.label+'</span>';
+        el.onclick=()=>{item.action();menu.remove();};
+        el.onmouseenter=()=>el.style.background='#3b4754';
+        el.onmouseleave=()=>el.style.background='transparent';
+        menu.appendChild(el);
+      });
+      document.body.appendChild(menu);
+      lucide.createIcons();
+      document.addEventListener('click',function h(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',h);}});
+    }
+
+    function fmtDateTime(d) {
+      const pad = n => String(n).padStart(2,'0');
+      return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    }
+    function fmtSize(b) {
+      if(b<1024) return b+' B';
+      if(b<1048576) return (b/1024).toFixed(1)+' KB';
+      return (b/1048576).toFixed(1)+' MB';
+    }
+    function showToast(msg, err) {
+      const old = document.querySelector('.copy-toast'); if(old) old.remove();
+      const t=document.createElement('div'); t.className='copy-toast';
+      t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(err?'#ef4444':'#10b981')+';color:white;padding:12px 24px;border-radius:8px;font-size:14px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+      t.textContent=msg; document.body.appendChild(t);
+      setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),300);},1500);
+    }
+    function escHtml(s) { if(!s)return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+    function toggleSidebarCompany(header) {
+      header.classList.toggle('collapsed');
+      const list = header.nextElementSibling;
+      if (list) list.style.display = header.classList.contains('collapsed') ? 'none' : '';
+    }
+  </script>
+</body>
+</html>

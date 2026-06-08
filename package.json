@@ -1,0 +1,52 @@
+{
+  "name": "translation-quote-system",
+  "version": "1.4.0",
+  "description": "翻译报价系统 - Electron 版本",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable && node scripts/postbuild.js",
+    "build-flask": "cd app && python -m PyInstaller --onefile --name flask_server --add-data \"quote_system/templates;quote_system/templates\" --add-data \"quote_system/static;quote_system/static\" --add-data \"config;config\" --add-data \"模板;模板\" --hidden-import quote_system.web_app --hidden-import quote_system.generator --hidden-import quote_system.memoq_html --hidden-import quote_system.projects --hidden-import quote_system.config --hidden-import quote_system.save_path_config --hidden-import quote_system.paths --hidden-import quote_system.feishu_client --hidden-import quote_system.auto_quote --hidden-import quote_system.auto_quote_zhan_shuang --hidden-import quote_system.auto_quote_zhan_shuang_feishu --hidden-import quote_system.auto_quote_4399 --hidden-import quote_system.auto_quote_diezhi --hidden-import quote_system.auto_fill_tk --hidden-import settlement.generate_settlement --hidden-import settlement.generate_settlement_mamian --hidden-import settlement.generate_settlement_zhan_shuang --hidden-import settlement.generate_settlement_zhan_shuang_faxing --hidden-import settlement.generate_settlement_4399 --hidden-import settlement.generate_settlement_diezhi --hidden-import settlement.settlement_tracker --hidden-import lxml --hidden-import openpyxl --hidden-import docx --distpath ../dist/flask_build --workpath ../dist/flask_work -y run_flask.py"
+  },
+  "build": {
+    "appId": "com.example.translation-quote",
+    "productName": "翻译报价系统",
+    "icon": "icon.ico",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "app",
+        "to": "app",
+        "filter": ["**/*", "!outputs/**", "!报价单历史/**", "!结算/**", "!汇总/**", "!**/*.log", "!**/__pycache__/**"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "${productName}-${version}-setup.exe"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}
