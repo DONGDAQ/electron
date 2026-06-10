@@ -40,9 +40,8 @@ const filesToSync = [
   'quote_system/templates/index.html',
   'quote_system/templates/report.html',
   'settlement/settlement_tracker.py',
-  'auto_quote_daemon.py',
   'auto_quote_scheduled.py',
-  'watchdog_auto_quote.vbs',
+  'watchdog_task.vbs',
 ];
 
 for (const f of filesToSync) {

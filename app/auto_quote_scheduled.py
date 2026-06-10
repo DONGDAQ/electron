@@ -52,12 +52,6 @@ def _run_captured(label: str, fn):
 
 
 if __name__ == "__main__":
-    try:
-        from smbclient import register_session
-        register_session("192.168.110.111", username="dong_daqian", password="dq46460055")
-    except Exception as e:
-        print(f"SMB 连接失败: {e}")
-
     from quote_system.auto_quote import run as run_huanta
     from quote_system.auto_quote_zhan_shuang import run as run_zhan_shuang
     from quote_system.auto_quote_zhan_shuang_feishu import run as run_zhan_shuang_feishu
@@ -75,3 +69,13 @@ if __name__ == "__main__":
 
     # 4399 在线表填表
     _run_captured("4399", run_4399)
+
+    # 归档已结算记录
+    try:
+        sys.path.insert(0, str(ROOT))
+        from settlement.settlement_tracker import archive_settled
+        n = archive_settled(months=3)
+        if n:
+            print(f"归档了 {n} 条已结算记录")
+    except Exception as e:
+        print(f"归档失败: {e}")
