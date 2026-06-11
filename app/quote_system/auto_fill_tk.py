@@ -84,7 +84,8 @@ def run(args: argparse.Namespace) -> None:
 
     print(f"Found {len(candidates)} rows to process:")
     for c in candidates:
-        print(f"  Row {c['row']}: {c['label']}")
+        label = c["n_attach"]["name"] if c["n_attach"] else c["n_text"]
+        print(f"  Row {c['row']}: {label}")
 
     processed = 0
     skipped = 0
@@ -96,16 +97,19 @@ def run(args: argparse.Namespace) -> None:
         print(f"\n[{idx+1}/{len(candidates)}] Processing row {row_num}...")
 
         try:
-            if candidate["is_same_as_above"]:
+            # 纯文本 + "同上" → 复用上一行
+            if not candidate["n_attach"] and is_same_as_above(candidate["n_text"]):
                 if last_values is None:
                     print("  N='same as above' but no previous data, skipping.")
                     skipped += 1
                     continue
                 values = last_values
                 print(f"  N='same as above', reusing: {values}")
-            else:
-                file_token = candidate["file_token"]
-                html_path = download_html(file_token, candidate["file_name"], download_dir, row_num)
+
+            # 有附件 → 下载 + 解析
+            elif candidate["n_attach"]:
+                attach = candidate["n_attach"]
+                html_path = download_html(attach["token"], attach["name"], download_dir, row_num)
                 if html_path is None:
                     failed += 1
                     continue
@@ -115,6 +119,12 @@ def run(args: argparse.Namespace) -> None:
                 last_values = values
                 html_path.unlink(missing_ok=True)
                 print(f"  Parsed: O={values[0]}, P={values[1]}, Q={values[2]}...")
+
+            # 纯文本非"同上" → 跳过
+            else:
+                print(f"  N column non-attachment, non-same-as-above: {candidate['n_text'][:50]}, skipping.")
+                skipped += 1
+                continue
 
             if args.dry_run:
                 print(f"  [dry-run] Skip write: {values}")
@@ -127,7 +137,7 @@ def run(args: argparse.Namespace) -> None:
                     add_record(quick_record(
                         project_key="tk",
                         company="Bilibili",
-                        req_name=candidate.get("label", f"Row {row_num}"),
+                        req_name=candidate["n_attach"]["name"] if candidate["n_attach"] else candidate["n_text"],
                         word_count=values[0] if values else 0,
                         total_price=0,
                         quote_file="",
@@ -224,7 +234,7 @@ def read_sheet_with_attachments(download_dir: Path) -> list[dict]:
 
 
 def find_candidates(all_rows: list[dict], tail: int = 0, blank_stop: int = 30) -> list[dict]:
-    """Find rows where N has attachment and O is empty."""
+    """Find rows where N has content and O is empty."""
     candidates = []
     start = max(0, len(all_rows) - tail) if tail > 0 else 0
     blank_streak = 0
@@ -232,51 +242,27 @@ def find_candidates(all_rows: list[dict], tail: int = 0, blank_stop: int = 30) -
     for i in range(start, len(all_rows)):
         row = all_rows[i]
         row_num = row["row_num"]
-        n_val = row["values"].get("N", "")
+        n_val = str(row["values"].get("N", "") or "").strip()
         o_val = row["values"].get("O", "")
         n_attach = row["attachments"].get("N")
 
-        # O already filled
+        # O 已填 → 跳过
         if o_val_is_filled(o_val):
-            if n_attach:
-                blank_streak = 0
             continue
 
-        # N empty
-        if not n_attach and (not n_val or (isinstance(n_val, str) and not n_val.strip())):
+        # N 空 → 累计空白，超过阈值停止扫描
+        if not n_attach and not n_val:
             blank_streak += 1
             if blank_streak >= blank_stop:
                 break
             continue
 
         blank_streak = 0
-
-        # N is attachment
-        if n_attach:
-            token = n_attach["token"]
-            name = n_attach["name"]
-            candidates.append({
-                "row": row_num,
-                "is_same_as_above": False,
-                "file_token": token,
-                "file_name": name,
-                "label": name,
-            })
-            continue
-
-        # N is "same as above" text
-        if isinstance(n_val, str) and is_same_as_above(n_val):
-            candidates.append({
-                "row": row_num,
-                "is_same_as_above": True,
-                "file_token": None,
-                "file_name": "",
-                "label": "same as above",
-            })
-            continue
-
-        # Other text content — skip
-        print(f"  Row {row_num}: N column non-attachment: {str(n_val)[:50]}")
+        candidates.append({
+            "row": row_num,
+            "n_attach": n_attach,
+            "n_text": n_val,
+        })
 
     return candidates
 
