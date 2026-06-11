@@ -4,7 +4,6 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 import openpyxl
-import win32com.client
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 import sys as _sys
@@ -75,6 +74,7 @@ INVOICE_COMPANIES = {
 
 def _ensure_formulas_cached(filepath):
     import pythoncom
+    import win32com.client
     pythoncom.CoInitialize()
     try:
         excel = win32com.client.DispatchEx('Excel.Application')
@@ -420,6 +420,7 @@ def generate_all(year, month):
 
     # 用Excel重算所有生成的结算单
     import pythoncom
+    import win32com.client
     pythoncom.CoInitialize()
     try:
         excel = win32com.client.DispatchEx('Excel.Application')
