@@ -110,6 +110,10 @@ def find_feishu_rows(rows: list[list]) -> list[dict]:
         if source != "飞书":
             continue
 
+        status = str(row[5]).strip() if len(row) > 5 else ""
+        if status and status != "None":
+            continue
+
         name = str(row[0]).strip() if len(row) > 0 else ""
         g_val = row[6] if len(row) > 6 else None
         if not g_val or not isinstance(g_val, list) or len(g_val) == 0:

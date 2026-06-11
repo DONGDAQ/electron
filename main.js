@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile, exec } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 
@@ -48,7 +48,6 @@ function findWpsExecutable() {
 const wpsExecutablePath = findWpsExecutable();
 
 function openWithWps(filePath) {
-  const { execFile } = require('child_process');
   return new Promise((resolve, reject) => {
     execFile(wpsExecutablePath, [filePath], (error) => {
       if (error) reject(error);
@@ -58,7 +57,6 @@ function openWithWps(filePath) {
 }
 
 ipcMain.on('open-file', (event, filePath) => {
-  const fs = require('fs');
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) {
     dialog.showErrorBox('打开失败', '文件不存在: ' + filePath);
@@ -83,7 +81,6 @@ ipcMain.on('open-file-location', (event, filePath) => {
     dialog.showErrorBox('路径无效', '无法打开文件夹：路径为空或格式错误');
     return;
   }
-  const fs = require('fs');
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) {
     dialog.showErrorBox('文件不存在', `无法打开文件所在位置，文件不存在:\n${absolutePath}`);
@@ -98,7 +95,6 @@ ipcMain.on('open-folder', (event, folderPath) => {
     dialog.showErrorBox('路径无效', '无法打开文件夹：路径为空或格式错误');
     return;
   }
-  const fs = require('fs');
   const absolutePath = path.resolve(folderPath);
   if (!fs.existsSync(absolutePath)) {
     dialog.showErrorBox('文件夹不存在', `文件夹不存在:\n${absolutePath}`);
@@ -143,11 +139,12 @@ ipcMain.handle('copy-to-clipboard', async (event, filePath) => {
   }
   
   try {
-    const { exec } = require('child_process');
     const absolutePath = path.resolve(filePath);
     
+    // 用 execFile 避免命令注入，路径中特殊字符已通过 resolve_allowed_path 校验
+    const safePath = absolutePath.replace(/'/g, "''");
     return new Promise((resolve) => {
-      exec(`powershell -Command "Set-Clipboard -Path '${absolutePath.replace(/'/g, "''")}'"`, (err) => {
+      execFile('powershell', ['-NoProfile', '-Command', `Set-Clipboard -LiteralPath '${safePath}'`], (err) => {
         if (err) {
           resolve({ success: false, error: err.message });
         } else {

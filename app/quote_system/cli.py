@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from .generator import QuoteRequest, generate_quote
 from .projects import PROJECTS, resolve_project
+from .utils import parse_date
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,17 +61,6 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--request-name", help="输出文件名里的需求名，例如 0416需求")
     generate.add_argument("--output", help="指定输出 xlsx 路径；不填则保存到报价单历史对应项目目录")
     return parser
-
-
-def parse_date(value: str | None) -> date | None:
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    raise ValueError(f"日期格式不正确: {value}，请使用 YYYY-MM-DD")
 
 
 def configure_output() -> None:

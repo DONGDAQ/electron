@@ -142,6 +142,12 @@
             生成报价单
           </button>
           {% endif %}
+          {% if selected_project.generator == 'bang2' %}
+          <button class="primary-button" id="bang2AutoQuoteBtn" onclick="runBang2AutoQuote()">
+            <i data-lucide="bot"></i>
+            自动报价
+          </button>
+          {% endif %}
         </div>
         <div style="display:none;align-items:center;gap:8px;" id="settleTopbarActions">
         </div>
@@ -1806,6 +1812,37 @@
       loadDiezhiBatchInfo();
     });
     {% endif %}
+
+    {% if selected_project.generator == 'bang2' %}
+    function runBang2AutoQuote() {
+      const btn = document.getElementById('bang2AutoQuoteBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
+      lucide.createIcons();
+
+      fetch('/bang2/auto-quote', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+          if (data.status === 'success') {
+            showToast('BANG2自动报价完成！');
+            showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + data.message + '</pre>', 'success');
+            loadQuoteHistory();
+          } else {
+            showToast('报价失败: ' + (data.message || '未知错误'), true);
+            showMessages('<p>' + (data.message || '报价失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+    {% endif %}
     function showMessages(html, category) {
       let messagesDiv = document.querySelector('.messages');
       if (!messagesDiv) {
@@ -3061,6 +3098,7 @@
       {key:'yihuan_faxing',name:'异环发行',company:'完美世界'},
       {key:'zhan_shuang',name:'战双版更',company:'库洛游戏'},
       {key:'zhan_shuang_feishu',name:'战双发行',company:'库洛游戏'},
+      {key:'bang2',name:'BANG2',company:'Bilibili'},
       {key:'tk',name:'TK填表',company:'Bilibili'},
       {key:'4399',name:'4399填表',company:'4399'},
     ];
