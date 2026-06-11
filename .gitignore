@@ -27,3 +27,7 @@ icon.ico
 icon.png
 generate_icon.py
 .playwright-mcp/
+dist/
+.workbuddy/
+251111-Character-Confirmed-CN-预估日期.html
+test_report.html
