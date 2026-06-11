@@ -16,17 +16,29 @@ SHEET_ID = "d73cd4"
 DOWNLOAD_DIR = Path(__file__).resolve().parent.parent / "outputs" / "tk_html"
 
 import os
-LARK_CLI = os.environ.get("LARK_CLI_PATH", "lark-cli")
-# Fallback to known install location
-if LARK_CLI == "lark-cli":
-    known = Path(os.path.expanduser("~/.workbuddy/binaries/node/cli-connector-packages/lark-cli"))
-    if known.exists():
-        LARK_CLI = str(known)
+
+_WB = Path(os.path.expanduser("~/.workbuddy"))
+_LARK_CLI_DIR = _WB / "binaries" / "node" / "cli-connector-packages"
+_RUN_JS = _LARK_CLI_DIR / "node_modules" / "@larksuite" / "cli" / "scripts" / "run.js"
+
+# Auto-detect node.exe from managed binaries
+_NODE_EXE = None
+_node_versions = sorted(
+    (_WB / "binaries" / "node" / "versions").glob("*/node.exe"), reverse=True
+)
+if _node_versions:
+    _NODE_EXE = str(_node_versions[0])
+elif os.environ.get("LARK_CLI_NODE"):
+    _NODE_EXE = os.environ["LARK_CLI_NODE"]
 
 
 def _cli(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
-    """Run lark-cli with common flags. Uses bash on Windows for shell scripts."""
-    cmd = ["bash", LARK_CLI, "--format", "json"] + list(args)
+    """Run lark-cli via node directly (no bash needed)."""
+    if not _RUN_JS.exists():
+        raise FileNotFoundError(f"lark-cli run.js not found: {_RUN_JS}")
+    if not _NODE_EXE:
+        raise FileNotFoundError("node.exe not found — set LARK_CLI_NODE env var")
+    cmd = [_NODE_EXE, str(_RUN_JS), "--format", "json"] + list(args)
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout,
         env={**os.environ, "LARK_CLI_NO_PROXY": "1"},
