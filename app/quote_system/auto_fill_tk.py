@@ -16,6 +16,10 @@ SHEET_ID = "d73cd4"
 DOWNLOAD_DIR = Path(__file__).resolve().parent.parent / "outputs" / "tk_html"
 
 import os
+import shutil
+
+# 优先使用全局安装的 lark-cli.cmd，其次用 node.exe 调用 run.js
+_LARK_CLI_CMD = shutil.which("lark-cli") or shutil.which("lark-cli.cmd")
 
 _WB = Path(os.path.expanduser("~/.workbuddy"))
 _LARK_CLI_DIR = _WB / "binaries" / "node" / "cli-connector-packages"
@@ -33,16 +37,25 @@ elif os.environ.get("LARK_CLI_NODE"):
 
 
 def _cli(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
-    """Run lark-cli via node directly (no bash needed)."""
-    if not _RUN_JS.exists():
-        raise FileNotFoundError(f"lark-cli run.js not found: {_RUN_JS}")
-    if not _NODE_EXE:
-        raise FileNotFoundError("node.exe not found — set LARK_CLI_NODE env var")
-    cmd = [_NODE_EXE, str(_RUN_JS), "--format", "json"] + list(args)
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout,
+    """Run lark-cli via global command or node directly."""
+    if _LARK_CLI_CMD:
+        cmd = [_LARK_CLI_CMD, "--format", "json"] + list(args)
+    elif _RUN_JS.exists() and _NODE_EXE:
+        cmd = [_NODE_EXE, str(_RUN_JS), "--format", "json"] + list(args)
+    else:
+        raise FileNotFoundError("lark-cli not found — install via 'npm install -g @larksuite/cli'")
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout,
         env={**os.environ, "LARK_CLI_NO_PROXY": "1"},
     )
+    # Safety: lark-cli may return empty output on errors; surface stderr
+    if not result.stdout:
+        stderr_snippet = (result.stderr or "")[:500]
+        raise RuntimeError(
+            f"lark-cli returned empty stdout (rc={result.returncode}). "
+            f"stderr: {stderr_snippet or '(empty)'}"
+        )
+    return result
 
 
 def run_scheduled() -> None:
@@ -143,23 +156,6 @@ def run(args: argparse.Namespace) -> None:
             else:
                 write_o_y(row_num, values)
                 print(f"  Written O-Y: {values}")
-
-                try:
-                    from settlement.settlement_tracker import quick_record, add_record
-                    add_record(quick_record(
-                        project_key="tk",
-                        company="Bilibili",
-                        req_name=candidate["n_attach"]["name"] if candidate["n_attach"] else candidate["n_text"],
-                        word_count=values[0] if values else 0,
-                        total_price=0,
-                        quote_file="",
-                        language="",
-                        source="auto",
-                        source_chars=values[0] if values else 0,
-                        billable_words=values[1] if len(values) > 1 else 0,
-                    ))
-                except Exception:
-                    pass
 
             processed += 1
             time.sleep(0.3)
@@ -355,8 +351,108 @@ def write_o_y(row_num: int, values: list[int]) -> None:
 
 def configure_output() -> None:
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
+        try:
             stream.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, AttributeError):
+            pass
+
+
+# ---- TK 数据缓存 ----
+
+CACHE_DIR = Path(__file__).resolve().parent.parent / "outputs" / "tk_cache"
+CACHE_FILE = CACHE_DIR / "tk_settlement_data.json"
+
+
+def sync_tk_data() -> dict:
+    """从飞书表读取 TK 数据并保存到本地缓存。返回统计数据。"""
+    import json as _json
+    from datetime import date as _date
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    today = _date.today()
+    current_month = today.month
+
+    settled = []
+    unsettled = []
+
+    # 分批读取
+    for start in range(3, 250, 50):
+        end = min(start + 49, 248)
+        result = _cli(
+            "sheets", "+cells-get",
+            "--url", ORIGINAL_SHEET_URL,
+            "--sheet-id", SHEET_ID,
+            "--range", f"B{start}:Z{end}",
+            timeout=120,
+        )
+        data = _json.loads(result.stdout)
+
+        for rng in data["data"]["ranges"]:
+            for ri, row_cells in enumerate(rng["cells"]):
+                row_num = rng["row_indices"][ri]
+                project = row_cells[0].get("value", "") if len(row_cells) > 0 and row_cells[0] else ""
+                req_name = row_cells[1].get("value", "") if len(row_cells) > 1 and row_cells[1] else ""
+                if not project or not req_name:
+                    continue
+
+                deliv = str(row_cells[6].get("value", "")) if len(row_cells) > 6 and row_cells[6] and row_cells[6].get("value") else ""
+                amount = 0
+                if len(row_cells) > 10 and row_cells[10] and row_cells[10].get("value"):
+                    try:
+                        amount = float(str(row_cells[10]["value"]).replace(",", ""))
+                    except (ValueError, TypeError):
+                        pass
+                status = str(row_cells[24].get("value", "")) if len(row_cells) > 24 and row_cells[24] and row_cells[24].get("value") else ""
+
+                entry = {
+                    "row": row_num,
+                    "project": str(project),
+                    "req_name": str(req_name)[:50],
+                    "deliv": deliv,
+                    "amount": amount,
+                    "status": status,
+                }
+
+                is_current_or_future = False
+                if deliv and "月" in deliv:
+                    try:
+                        month = int(deliv.split("月")[0])
+                        is_current_or_future = month >= current_month
+                    except (ValueError, IndexError):
+                        pass
+
+                if is_current_or_future:
+                    unsettled.append(entry)
+                elif "已请款" in status:
+                    settled.append(entry)
+                else:
+                    unsettled.append(entry)
+
+    result_data = {
+        "sync_time": today.isoformat(),
+        "settled_count": len(settled),
+        "settled_amount": round(sum(e["amount"] for e in settled), 2),
+        "unsettled_count": len(unsettled),
+        "unsettled_amount": round(sum(e["amount"] for e in unsettled), 2),
+        "settled": settled,
+        "unsettled": unsettled,
+    }
+
+    CACHE_FILE.write_text(_json.dumps(result_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"TK 数据已同步: 已请款 {len(settled)} 条, 未请款 {len(unsettled)} 条")
+    return result_data
+
+
+def load_tk_cache() -> dict | None:
+    """从本地缓存读取 TK 数据。"""
+    import json as _json
+    if not CACHE_FILE.exists():
+        return None
+    try:
+        return _json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":

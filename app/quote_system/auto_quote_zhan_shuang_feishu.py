@@ -92,13 +92,13 @@ def get_bi_monthly_label_for_date(d: date) -> tuple[int, int, str]:
 
 def feishu_quote_path(today: date) -> Path:
     _, _, label = get_bi_monthly_label(today)
-    return get_quote_history_dir() / "库洛游戏" / "战双发行" / f"{today.year}年{label}月发行本地化沟通群需求报价单.xlsx"
+    return get_quote_history_dir() / "库洛游戏" / "战双发行" / f"战双{today.year}年{label}月发行本地化沟通群需求报价单.xlsx"
 
 
 def feishu_quote_path_for_date(d: date) -> Path:
     """根据返回日期生成对应的报价单路径"""
     _, _, label = get_bi_monthly_label_for_date(d)
-    return get_quote_history_dir() / "库洛游戏" / "战双发行" / f"{d.year}年{label}月发行本地化沟通群需求报价单.xlsx"
+    return get_quote_history_dir() / "库洛游戏" / "战双发行" / f"战双{d.year}年{label}月发行本地化沟通群需求报价单.xlsx"
 
 
 def find_feishu_rows(rows: list[list]) -> list[dict]:
@@ -362,23 +362,6 @@ def run() -> None:
                 client.write_cell(row_num, "I", billable)
                 print(f"  行{row_num} 状态→已生成, I列→{billable}")
 
-                try:
-                    from settlement.settlement_tracker import quick_record, add_record
-                    lang_display, price = LANG_CONFIG.get(item["lang"], (item["lang"], 0.64))
-                    add_record(quick_record(
-                        project_key="zhan_shuang_faxing",
-                        company="库洛游戏",
-                        req_name=item["req_name"],
-                        word_count=billable,
-                        total_price=round(billable * price * 1.06, 2),
-                        quote_file=qpath.name,
-                        language=lang_display,
-                        delivery_date=item["deliv_str"] or None,
-                        source="auto",
-                        billable_words=billable,
-                    ))
-                except Exception:
-                    pass
                 total_processed += 1
 
             except Exception as e:

@@ -19,8 +19,7 @@ from .generator import QuoteRequest, generate_quote
 from .memoq_html import quote_words
 from .projects import PROJECTS, resolve_project, get_projects_by_company, save_project_config
 from .save_path_config import get_save_path, set_save_path
-from .paths import get_quote_history_dir, get_settlement_dir
-from settlement.settlement_tracker import record_from_quote, add_record as _add_quote_record
+from .paths import get_quote_history_dir, get_settlement_dir, save_user_config
 from .auto_quote import run as auto_quote_run
 from .auto_quote_zhan_shuang import run as zhan_shuang_auto_quote_run
 from .auto_quote_zhan_shuang_feishu import run as zhan_shuang_feishu_run
@@ -38,7 +37,8 @@ app = Flask(__name__)
 app.secret_key = "local-quote-system"
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
-TK_FILL_PROCESS: subprocess.Popen | None = None
+TK_FILL_THREAD: threading.Thread | None = None
+TK_FILL_RUNNING: bool = False
 FILL_4399_PROCESS: subprocess.Popen | None = None
 LOCAL_ONLY_ENDPOINTS = {"/delete-quote", "/open-file", "/open-folder"}
 DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
@@ -157,12 +157,6 @@ def generate() -> Response:
         )
         result = generate_quote(ROOT, quote_request)
 
-        try:
-            rec = record_from_quote(quote_request, result.stats, result.final_path, source="manual")
-            _add_quote_record(rec)
-        except Exception:
-            pass
-
         summary = summarize_stats(project.key, result)
         display_path = result.final_path
         escaped_path = str(display_path).replace("\\", "\\\\")
@@ -176,134 +170,6 @@ def generate() -> Response:
     return redirect(url_for("index", project=request.form.get("project", "")))
 
 
-@app.get("/mobile")
-def mobile() -> str:
-    return render_template("mobile.html")
-
-
-@api_handler
-@app.post("/mobile/generate")
-def mobile_generate() -> Response:
-    message = request.form.get("message", "").strip()
-    files = request.files.getlist("files")
-    
-    if not files:
-        return jsonify({
-            "status": "error",
-            "message": "请上传 HTML 文件"
-        })
-    
-    project_key = request.form.get("project", "")
-    demand_date_str = request.form.get("demand_date", "")
-    delivery_date_str = request.form.get("delivery_date", "")
-    
-    if not project_key:
-        project_key = detect_project(message)
-    
-    if not project_key:
-        return jsonify({
-            "status": "error",
-            "message": "无法识别项目，请告诉我项目名称（如：马娘、战双、Bang2）"
-        })
-    
-    try:
-        project = resolve_project(project_key)
-    except ValueError:
-        return jsonify({
-            "status": "error",
-            "message": f"未找到项目：{project_key}"
-        })
-    
-    demand_date = parse_date(demand_date_str) if demand_date_str else date.today()
-    delivery_date = parse_date(delivery_date_str) if delivery_date_str else None
-    
-    if not delivery_date:
-        dates = extract_dates_from_message(message)
-        if dates:
-            demand_date = dates[0] if len(dates) >= 1 else demand_date
-            delivery_date = dates[1] if len(dates) >= 2 else None
-    
-    saved_files = save_uploads(files)
-    html_paths = saved_files
-    
-    languages, prices = get_effective_language_config(project.key)
-    
-    stats = []
-    for html_path in html_paths:
-        try:
-            stat = quote_words(html_path)
-            stats.append(stat)
-        except Exception as exc:
-            print(f"处理文件出错 {html_path}: {exc}")
-    
-    if not stats:
-        return jsonify({
-            "status": "error",
-            "message": "无法读取 HTML 文件，请确保文件格式正确"
-        })
-    
-    save_path = get_save_path(project.key)
-    output_path = Path(save_path) if save_path else None
-
-    quote_request = QuoteRequest(
-        project=project,
-        html_paths=html_paths,
-        languages=languages,
-        quote_date=demand_date,
-        delivery_date=delivery_date,
-        service_content=None,
-        request_name=None,
-        include_extract="摘字" in languages if languages else False,
-        price_overrides=prices,
-        per_file_languages=None,
-        output_path=output_path,
-    )
-    
-    result = generate_quote(ROOT, quote_request)
-
-    try:
-        rec = record_from_quote(quote_request, result.stats, result.final_path, source="mobile")
-        _add_quote_record(rec)
-    except Exception:
-        pass
-
-    download_url = url_for("download", path=result.output_path)
-    
-    total_chars = sum(stat.all_row.source_chars or 0 for stat in stats)
-    total_price = 0
-    quote_items = []
-    
-    if languages:
-        for lang in languages:
-            price = prices.get(lang, 0)
-            if lang == "摘字":
-                words = total_chars
-            else:
-                words = sum(stat.all_row.target_chars or 0 for stat in stats)
-            subtotal = words * price
-            total_price += subtotal
-            quote_items.append({
-                "language": lang,
-                "words": words,
-                "price": f"{price:.3f}",
-                "subtotal": f"{subtotal:.2f}"
-            })
-    
-    quote_info = {
-        "items": quote_items,
-        "total": f"{total_price:.2f}"
-    }
-    
-    return jsonify({
-        "status": "success",
-        "message": "✅ 报价单已生成！",
-        "project": project.key,
-        "demand_date": demand_date.isoformat(),
-        "delivery_date": delivery_date.isoformat() if delivery_date else None,
-        "download_url": download_url,
-        "quote_info": quote_info
-    })
-    
 def detect_project(message: str) -> str | None:
     message_lower = message.lower()
     
@@ -313,7 +179,7 @@ def detect_project(message: str) -> str | None:
                 return proj.key
     
     if "马娘" in message or "优俊" in message:
-        return "umamusume"
+        return "maniang"
     if "战双" in message:
         return "zhan_shuang"
     if "bang" in message_lower or "bang2" in message_lower:
@@ -407,20 +273,34 @@ def get_base_paths() -> Response:
 def save_base_paths() -> Response:
     try:
         import json as _json
-        config_path = ROOT / "config" / "base_paths.json"
+        import re
         data = request.get_json() or {}
-        config = {}
-        if config_path.exists():
-            try:
-                config = _json.loads(config_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        if "quote_history_base" in data:
-            config["quote_history_base"] = data["quote_history_base"]
-        if "settlement_base" in data:
-            config["settlement_base"] = data["settlement_base"]
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(_json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # ---- 校验：拒绝明显的测试/占位路径 ----
+        _BLOCKED = [
+            re.compile(r'^[A-Za-z]:/test$', re.IGNORECASE),
+            re.compile(r'^[A-Za-z]:/tmp$', re.IGNORECASE),
+            re.compile(r'^[A-Za-z]:\\test$', re.IGNORECASE),
+            re.compile(r'^[A-Za-z]:\\tmp$', re.IGNORECASE),
+            re.compile(r'^[A-Za-z]:/测试$'),
+            re.compile(r'^[A-Za-z]:\\测试$'),
+        ]
+        for key in ("quote_history_base", "settlement_base"):
+            if key in data:
+                pval = data[key].strip()
+                if not pval:
+                    continue
+                for pat in _BLOCKED:
+                    if pat.match(pval):
+                        return jsonify({
+                            "status": "error",
+                            "message": f"路径 '{pval}' 疑似测试占位路径，已拒绝保存。请填写正式路径。"
+                        }), 400
+
+        # ---- 仅写入用户覆盖文件，永不动出厂默认 base_paths.json ----
+        save_user_config({
+            k: v for k, v in data.items() if k in ("quote_history_base", "settlement_base") and v.strip()
+        })
         return jsonify({"status": "success"})
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -468,7 +348,10 @@ def all_quotes() -> Response:
     result = []
     if not history_dir.exists():
         return {"status": "success", "data": result}
-    for xlsx_file in sorted(history_dir.rglob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True):
+    for xlsx_file in sorted(
+        (f for f in history_dir.rglob("*.xlsx") if "已结算" not in str(f.relative_to(history_dir))),
+        key=lambda x: x.stat().st_mtime, reverse=True,
+    ):
         rel = xlsx_file.relative_to(history_dir)
         result.append({
             "name": xlsx_file.name,
@@ -478,6 +361,47 @@ def all_quotes() -> Response:
             "project": rel.parts[0] if len(rel.parts) > 1 else "",
         })
     return {"status": "success", "data": result}
+
+
+@app.get("/api/report-dashboard")
+def report_dashboard() -> Response:
+    """从缓存读取报告数据，补充 today_runs 后返回"""
+    import json as _json
+
+    cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
+    if not cache_file.exists():
+        return {"status": "empty", "message": "报告缓存不存在，请先执行自动报价或手动刷新"}
+
+    try:
+        data = _json.loads(cache_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {"status": "error", "message": "缓存读取失败"}
+
+    today_runs = 0
+    index_file = OUTPUTS_DIR / "logs" / "auto_quote" / "_index.json"
+    if index_file.exists():
+        try:
+            index = _json.loads(index_file.read_text(encoding="utf-8"))
+            for entry in index:
+                ts = entry.get("timestamp", "")
+                if ts and ts.startswith(date.today().strftime("%Y-%m-%d")):
+                    today_runs += 1
+        except Exception:
+            pass
+
+    data["today_runs"] = today_runs
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/report-dashboard/refresh")
+def report_dashboard_refresh() -> Response:
+    """手动刷新报告缓存"""
+    try:
+        from .report_cache import sync_report_cache
+        result = sync_report_cache()
+        return {"status": "success", "message": "缓存已刷新", "data": result}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.get("/api/auto-quote-logs")
@@ -511,22 +435,6 @@ def auto_quote_log_content() -> Response:
     except ValueError:
         return {"status": "error", "message": "路径不允许"}, 403
     return {"status": "success", "content": p.read_text(encoding="utf-8")}
-
-
-@app.get("/api/quote-records")
-def quote_records_api() -> Response:
-    from settlement.settlement_tracker import load_records, TRACKER_DIR
-    project_key = request.args.get("project", "")
-    if project_key:
-        records = load_records(project_key)
-    else:
-        records = []
-        if TRACKER_DIR.exists():
-            for d in TRACKER_DIR.iterdir():
-                if d.is_dir() and (d / "records.json").exists():
-                    records.extend(load_records(d.name))
-    records.sort(key=lambda r: r.get("quote_date", ""), reverse=True)
-    return {"status": "success", "data": records}
 
 
 @app.get("/download")
@@ -698,22 +606,6 @@ def diezhi_generate_quote() -> Response:
             )
             output = buffer.getvalue()
 
-            try:
-                from settlement.settlement_tracker import quick_record
-                proj = resolve_project(project_key)
-                _add_quote_record(quick_record(
-                    project_key=project_key,
-                    company=proj.company or "叠纸",
-                    req_name=out_path.stem,
-                    word_count=0,
-                    total_price=0,
-                    quote_file=out_path.name,
-                    language=service_type,
-                    source="batch",
-                ))
-            except Exception:
-                pass
-
             return jsonify({
                 "status": "success",
                 "output_path": str(out_path),
@@ -729,49 +621,85 @@ def diezhi_generate_quote() -> Response:
 @app.post("/tk-fill/start")
 def start_tk_fill() -> Response:
     """启动 TK 自动填表：API 方式下载 N 列 HTML → 解析 → 填写 O-Y。"""
-    global TK_FILL_PROCESS
+    global TK_FILL_THREAD, TK_FILL_RUNNING
     try:
-        if TK_FILL_PROCESS and TK_FILL_PROCESS.poll() is None:
+        if TK_FILL_RUNNING:
             return jsonify({
                 "status": "error",
                 "message": "TK 填表已经在运行，请等待完成。",
             }), 409
 
-        args = [
-            sys.executable,
-            "-m",
-            "quote_system.auto_fill_tk",
-        ]
+        # Parse arguments (same as CLI)
+        tail = 0
         tail_text = request.form.get("tail", "").strip()
         if tail_text:
             try:
                 tail = int(tail_text)
-                if tail > 0:
-                    args.extend(["--tail", str(tail)])
             except ValueError:
                 pass
-        if request.form.get("dry_run") == "1":
-            args.append("--dry-run")
+        dry_run = request.form.get("dry_run") == "1"
 
         log_dir = OUTPUTS_DIR / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "tk_fill.log"
-        log_file = log_path.open("a", encoding="utf-8")
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        TK_FILL_PROCESS = subprocess.Popen(
-            args,
-            cwd=str(ROOT),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            creationflags=creationflags,
-        )
+
+        def _run_tk_fill() -> None:
+            global TK_FILL_RUNNING
+            import argparse, io as _io
+            from .auto_fill_tk import build_parser, run, configure_output
+
+            # Redirect stdout/stderr to log file
+            log_file = open(log_path, "w", encoding="utf-8")
+            real_stdout, real_stderr = sys.stdout, sys.stderr
+            sys.stdout = sys.stderr = log_file
+
+            try:
+                configure_output()
+                parser = build_parser()
+                ns = argparse.Namespace(
+                    dry_run=dry_run,
+                    tail=tail,
+                    blank_stop=30,
+                    max_rows=2000,
+                    download_dir=str(Path(__file__).resolve().parent.parent / "outputs" / "tk_html"),
+                )
+                run(ns)
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+            finally:
+                sys.stdout = real_stdout
+                sys.stderr = real_stderr
+                log_file.close()
+                TK_FILL_RUNNING = False
+
+        TK_FILL_RUNNING = True
+        TK_FILL_THREAD = threading.Thread(target=_run_tk_fill, daemon=True)
+        TK_FILL_THREAD.start()
+
         return jsonify({
             "status": "success",
             "message": "已启动 TK 自动填表。正在下载 HTML → 解析 → 填写 O-Y 列。",
             "log_path": str(log_path),
         })
     except Exception as exc:
+        TK_FILL_RUNNING = False
         return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.get("/tk-fill/status")
+def tk_fill_status() -> Response:
+    log_path = OUTPUTS_DIR / "logs" / "tk_fill.log"
+    log_content = ""
+    if log_path.exists():
+        try:
+            log_content = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+        except Exception:
+            pass
+    return jsonify({
+        "running": TK_FILL_RUNNING,
+        "log": log_content,
+    })
 
 
 @app.post("/fill-4399/start")
@@ -796,7 +724,7 @@ def start_fill_4399() -> Response:
         log_dir = OUTPUTS_DIR / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "4399_fill.log"
-        log_file = log_path.open("a", encoding="utf-8")
+        log_file = log_path.open("w", encoding="utf-8")
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         FILL_4399_PROCESS = subprocess.Popen(
             args,
@@ -812,6 +740,19 @@ def start_fill_4399() -> Response:
         })
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.get("/fill-4399/status")
+def fill_4399_status() -> Response:
+    running = FILL_4399_PROCESS is not None and FILL_4399_PROCESS.poll() is None
+    log_path = OUTPUTS_DIR / "logs" / "4399_fill.log"
+    log_content = ""
+    if log_path.exists():
+        try:
+            log_content = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+        except Exception:
+            pass
+    return jsonify({"running": running, "log": log_content})
 
 
 @app.get("/quote-history")
@@ -860,7 +801,7 @@ def quote_history() -> Response:
 
                 # 子目录
                 for sub_dir in sorted(
-                    [d for d in project_dir.iterdir() if d.is_dir()],
+                    [d for d in project_dir.iterdir() if d.is_dir() and "已结算" not in d.name],
                     key=lambda x: x.name, reverse=True
                 ):
                     sub_info = {"name": sub_dir.name, "path": str(sub_dir), "files": []}
@@ -911,9 +852,9 @@ def build_history_tree(target_dir):
             })
         result[0]["folders"].append(root_info)
 
-    # 检查子目录（如"已结算"）
+    # 检查子目录
     sub_dirs = sorted(
-        [d for d in target_dir.iterdir() if d.is_dir()],
+        [d for d in target_dir.iterdir() if d.is_dir() and "已结算" not in d.name],
         key=lambda x: x.name, reverse=True
     )
     for sub_dir in sub_dirs:
@@ -1077,7 +1018,7 @@ def mamian_bill_preview() -> Response:
     from settlement.generate_settlement_mamian import scan_quotes, _get_bill_config
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    project_key = request.args.get("project", "umamusume")
+    project_key = request.args.get("project", "maniang")
     if not (2020 <= year <= 2099 and 1 <= month <= 12):
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
@@ -1104,7 +1045,7 @@ def mamian_generate_bill() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    project_key = data.get("project", "umamusume")
+    project_key = data.get("project", "maniang")
     if not (2020 <= year <= 2099 and 1 <= month <= 12):
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
@@ -1141,7 +1082,7 @@ def mamian_generate_sealed() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    project_key = data.get("project", "umamusume")
+    project_key = data.get("project", "maniang")
     total_amount = data.get("total_amount")
     if total_amount is not None:
         total_amount = float(total_amount)
@@ -1164,33 +1105,6 @@ def mamian_generate_sealed() -> Response:
         "file": {"path": str(output_path), "name": output_path.name},
         "invoice_text": invoice_text,
     })
-def _check_discrepancies(project_key: str, settle_records: list[dict], year: int, month: int) -> list[dict]:
-    try:
-        from settlement.settlement_tracker import get_unsettled
-        quote_recs = get_unsettled(project_key, year, month)
-    except Exception:
-        return []
-    discrepancies = []
-    for sr in settle_records:
-        sr_name = (sr.get("req_name") or sr.get("task_no") or "").strip()
-        sr_words = sr.get("billable_words") or sr.get("word_count") or 0
-        for qr in quote_recs:
-            qr_name = (qr.get("req_name") or "").strip()
-            if not sr_name or not qr_name:
-                continue
-            if sr_name in qr_name or qr_name in sr_name:
-                qr_words = qr.get("billable_words") or qr.get("word_count") or 0
-                if qr_words > 0 and sr_words > 0:
-                    diff_pct = abs(sr_words - qr_words) / qr_words * 100
-                    if diff_pct > 5:
-                        discrepancies.append({
-                            "req_name": sr_name,
-                            "settle_words": sr_words,
-                            "quote_words": qr_words,
-                            "diff_pct": round(diff_pct, 1),
-                        })
-                break
-    return discrepancies
 
 
 @api_handler
@@ -1204,12 +1118,10 @@ def settlement_preview() -> Response:
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
     records = read_feishu_data(year, month)
-    discrepancies = _check_discrepancies("huanta", records, year, month)
     return jsonify({
         "status": "success",
         "data": records,
         "count": len(records),
-        "discrepancies": discrepancies,
     })
 @api_handler
 @app.get("/api/settlement_yh_games/preview")
@@ -1222,12 +1134,10 @@ def settlement_yh_games_preview() -> Response:
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
     records = read_feishu_data(year, month)
-    discrepancies = _check_discrepancies("yihuan_nei", records, year, month)
     return jsonify({
         "status": "success",
         "data": records,
         "count": len(records),
-        "discrepancies": discrepancies,
     })
 @api_handler
 @app.get("/api/settlement_yh_publish/preview")
@@ -1240,13 +1150,12 @@ def settlement_yh_publish_preview() -> Response:
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
     records = read_feishu_data(year, month)
-    discrepancies = _check_discrepancies("yihuan_faxing", records, year, month)
     return jsonify({
         "status": "success",
         "data": records,
         "count": len(records),
-        "discrepancies": discrepancies,
     })
+
 @api_handler
 @app.post("/api/settlement/generate")
 def settlement_generate() -> Response:
@@ -1921,7 +1830,7 @@ def settlement_files() -> Response:
     result: list[dict] = []
 
     bill_project_dirs = {
-        "umamusume": "马娘",
+        "maniang": "马娘",
         "bang2": "bang2",
         "hbr": "HBR",
     }
@@ -2100,7 +2009,7 @@ def get_invoice_request() -> Response:
     """获取已保存的开票请求"""
     year = request.args.get("year", "")
     month = request.args.get("month", "")
-    project_key = request.args.get("project", "umamusume")
+    project_key = request.args.get("project", "maniang")
     if not year or not month:
         return jsonify({"status": "error", "message": "缺少年月参数"}), 400
 
@@ -2125,7 +2034,7 @@ def generate_invoice_request() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    project_key = data.get("project", "umamusume")
+    project_key = data.get("project", "maniang")
     if not (2020 <= year <= 2099 and 1 <= month <= 12):
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
 
@@ -2205,17 +2114,21 @@ def start_quote_all() -> Response:
                 sys.stdout = buf
                 try:
                     _execute_single_auto_quote(key)
+                    output = buf.getvalue()
                     with _quote_jobs_lock:
-                        job["projects"][key]["output"] = buf.getvalue()
+                        job["projects"][key]["output"] = output
                         job["projects"][key]["status"] = "done"
+                    _save_auto_quote_log(key, output, "success")
                 finally:
                     sys.stdout = old_stdout
             except Exception as e:
                 import traceback
+                err_output = traceback.format_exc()
                 with _quote_jobs_lock:
                     job["projects"][key]["status"] = "error"
                     job["projects"][key]["error"] = str(e)
-                    job["projects"][key]["output"] = traceback.format_exc()
+                    job["projects"][key]["output"] = err_output
+                _save_auto_quote_log(key, err_output, "error")
         with _quote_jobs_lock:
             job["status"] = "done"
 
@@ -2243,7 +2156,7 @@ SETTLEMENT_WORKBENCH_PROJECTS = [
     {"key": "yihuan_faxing", "name": "异环发行", "company": "完美世界", "type": "perfect_world", "module": "generate_settlement_yh_publish", "subdir": "异环发行"},
     {"key": "zhan_shuang", "name": "战双版更", "company": "库洛游戏", "type": "zhan_shuang", "module": "generate_settlement_zhan_shuang", "subdir": "战双版更"},
     {"key": "zhan_shuang_faxing", "name": "战双发行", "company": "库洛游戏", "type": "zhan_shuang_faxing", "module": "generate_settlement_zhan_shuang_faxing", "subdir": "战双发行"},
-    {"key": "umamusume", "name": "马娘", "company": "Bilibili", "type": "mamian", "project_key": "umamusume"},
+    {"key": "maniang", "name": "马娘", "company": "Bilibili", "type": "mamian", "project_key": "maniang"},
     {"key": "bang2", "name": "BANG2", "company": "Bilibili", "type": "mamian", "project_key": "bang2"},
     {"key": "hbr", "name": "炽焰天穹", "company": "Bilibili", "type": "mamian", "project_key": "hbr"},
     {"key": "liandishenkong", "name": "恋与深空", "company": "叠纸", "type": "diezhi"},
@@ -2763,7 +2676,6 @@ def main() -> None:
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
-    print(f"局域网访问地址: http://{local_ip}:5000/mobile")
     print(f"本机访问地址:   http://127.0.0.1:5000")
 
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

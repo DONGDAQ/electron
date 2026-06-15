@@ -101,23 +101,6 @@ def run(dry_run: bool = False) -> None:
                 client.write_cell(row_num, COL_REPEAT_CHARS, repeat_chars)
                 print(f"  行{row_num} K/L/M列已写入: {asian_chars}/{total_chars}/{repeat_chars}")
 
-                try:
-                    from settlement.settlement_tracker import quick_record, add_record
-                    add_record(quick_record(
-                        project_key="4399",
-                        company="4399",
-                        req_name=item["req_name"],
-                        word_count=asian_chars,
-                        total_price=0,
-                        quote_file="",
-                        language="",
-                        source="auto",
-                        source_chars=total_chars,
-                        billable_words=asian_chars,
-                    ))
-                except Exception:
-                    pass
-
             html_path.unlink(missing_ok=True)
 
             time.sleep(0.3)
@@ -165,8 +148,10 @@ def find_unprocessed_rows(rows: list[list]) -> list[dict]:
 
 def _configure_output() -> None:
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
+        try:
             stream.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":

@@ -1572,37 +1572,70 @@
 
       const label = is4399 ? '4399' : 'TK';
       const endpoint = is4399 ? '/fill-4399/start' : '/tk-fill/start';
+      const statusEndpoint = is4399 ? '/fill-4399/status' : '/tk-fill/status';
       const fillDesc = is4399 ? 'K/L/M' : 'O-Y';
+
+      function resetBtn() {
+        if (btn) btn.disabled = false;
+        if (btn) btn.innerHTML = '<i data-lucide="table-2"></i> 开始 ' + label + ' 填表';
+        if (topBtn) topBtn.disabled = false;
+        if (topBtn) topBtn.innerHTML = '<i data-lucide="table-2"></i> ' + label + ' 填表';
+        lucide.createIcons();
+      }
+
+      function pollStatus() {
+        fetch(statusEndpoint)
+          .then(r => r.json())
+          .then(data => {
+            if (data.running) {
+              if (status) status.textContent = '填表中...';
+              setTimeout(pollStatus, 2000);
+            } else {
+              resetBtn();
+              const log = data.log || '';
+              const doneMatch = log.match(/Done:\s*(\d+)\s*processed,\s*(\d+)\s*skipped,\s*(\d+)\s*failed/);
+              const noPending = log.includes('没有找到待处理的需求') || log.includes('No rows to process');
+              const hasError = log.includes('失败') || log.includes('Error') || log.includes('Failed');
+              if (doneMatch) {
+                const msg = label + ' 填表完成：' + doneMatch[1] + ' 条已填写，' + doneMatch[2] + ' 条跳过，' + doneMatch[3] + ' 条失败';
+                if (status) status.textContent = msg;
+                showToast(msg);
+                showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + log + '</pre>', doneMatch[3] === '0' ? 'success' : 'error');
+              } else if (noPending) {
+                if (status) status.textContent = label + '：没有待处理的行';
+                showToast(label + '：没有待处理的行');
+                showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + log + '</pre>', 'success');
+              } else {
+                const msg = label + ' 填表已完成' + (hasError ? '（有错误）' : '');
+                if (status) status.textContent = msg;
+                showToast(msg);
+                showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + log + '</pre>', hasError ? 'error' : 'success');
+              }
+            }
+          })
+          .catch(() => {
+            if (status) status.textContent = '状态查询失败';
+            resetBtn();
+          });
+      }
 
       const formData = new URLSearchParams();
       fetch(endpoint, { method: 'POST', body: formData })
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
-          if (btn) btn.disabled = false;
-          if (btn) btn.innerHTML = '<i data-lucide="table-2"></i> 开始 ' + label + ' 填表';
-          if (topBtn) topBtn.disabled = false;
-          if (topBtn) topBtn.innerHTML = '<i data-lucide="table-2"></i> ' + label + ' 填表';
-          lucide.createIcons();
           if (ok && data.status === 'success') {
-            if (status) status.textContent = data.message;
+            if (status) status.textContent = '填表中...';
             showToast(label + ' 填表已启动');
-            showMessages(
-              '<p>' + data.message + '</p>'
-              + '<p style="margin-top:6px;color:var(--muted);">只会填写 ' + fillDesc + ' 列；其他列不会被脚本写入。</p>',
-              'success'
-            );
+            setTimeout(pollStatus, 2000);
           } else {
+            resetBtn();
             if (status) status.textContent = data.message || '启动失败';
             showToast(data.message || '启动失败', true);
             showMessages('<p>' + (data.message || '启动失败') + '</p>', 'error');
           }
         })
         .catch(err => {
-          if (btn) btn.disabled = false;
-          if (btn) btn.innerHTML = '<i data-lucide="table-2"></i> 开始 ' + label + ' 填表';
-          if (topBtn) topBtn.disabled = false;
-          if (topBtn) topBtn.innerHTML = '<i data-lucide="table-2"></i> ' + label + ' 填表';
-          lucide.createIcons();
+          resetBtn();
           if (status) status.textContent = '启动失败: ' + err.message;
           showToast('启动失败: ' + err.message, true);
         });
@@ -1913,7 +1946,7 @@
           var ms = getSettleMonths();
           var m = ms.length > 0 ? ms.join(',') : document.getElementById('settleMonth').value;
           var pk = document.getElementById('currentProject').value;
-          var isBillProj = pk === 'umamusume' || pk === 'bang2' || pk === 'hbr';
+          var isBillProj = pk === 'maniang' || pk === 'bang2' || pk === 'hbr';
           var isTk = pk === 'tk';
           var isPerfectWorld = pk === 'huanta' || pk === 'yihuan_nei' || pk === 'yihuan_faxing';
           document.getElementById('batchSettleBtn').style.display = isPerfectWorld ? '' : 'none';
@@ -1983,7 +2016,7 @@
         'zhan_shuang_faxing': { preview: '/api/settlement_zhan_shuang_faxing/preview', generate: '/api/settlement_zhan_shuang_faxing/generate', multiMonth: true },
         'yihuan_nei': { preview: '/api/settlement_yh_games/preview', generate: '/api/settlement_yh_games/generate' },
         'yihuan_faxing': { preview: '/api/settlement_yh_publish/preview', generate: '/api/settlement_yh_publish/generate' },
-        'umamusume': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
+        'maniang': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
         'bang2': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
         'hbr': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
         'liandishenkong': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
@@ -2077,7 +2110,7 @@
       var pk = document.getElementById('currentProject').value;
       if (y && m) {
         loadSettleHistory(y, m, pk);
-        if (pk === 'umamusume' || pk === 'bang2' || pk === 'hbr') {
+        if (pk === 'maniang' || pk === 'bang2' || pk === 'hbr') {
           checkExistingBill(y, ms[0], pk);
           loadInvoiceRequest(y, ms[0], pk);
         } else if (pk === 'liandishenkong' || pk === 'shining_nikki' || pk === 'niki_xinzuo') {
@@ -2774,7 +2807,7 @@
     }
 
     async function checkExistingBill(year, month, projKey) {
-      if (projKey !== 'umamusume' && projKey !== 'bang2' && projKey !== 'hbr') return;
+      if (projKey !== 'maniang' && projKey !== 'bang2' && projKey !== 'hbr') return;
       try {
         const resp = await fetch('/api/settlement-files?project=' + encodeURIComponent(projKey) + '&year=' + year + '&month=' + month);
         const result = await resp.json();
@@ -3205,7 +3238,7 @@
       {key:'yihuan_faxing',name:'异环发行',company:'完美世界',type:'pw'},
       {key:'zhan_shuang',name:'战双版更',company:'库洛游戏',type:'zs'},
       {key:'zhan_shuang_faxing',name:'战双发行',company:'库洛游戏',type:'zsfx'},
-      {key:'umamusume',name:'马娘',company:'Bilibili',type:'mamian'},
+      {key:'maniang',name:'马娘',company:'Bilibili',type:'mamian'},
       {key:'bang2',name:'BANG2',company:'Bilibili',type:'mamian'},
       {key:'hbr',name:'炽焰天穹',company:'Bilibili',type:'mamian'},
       {key:'liandishenkong',name:'恋与深空',company:'叠纸',type:'diezhi'},

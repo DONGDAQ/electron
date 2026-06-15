@@ -11,8 +11,8 @@ from quote_system.projects import (
 
 class TestResolveProject:
     def test_should_resolve_by_key(self):
-        proj = resolve_project("umamusume")
-        assert proj.key == "umamusume"
+        proj = resolve_project("maniang")
+        assert proj.key == "maniang"
         assert proj.display_name == "马娘"
 
     def test_should_resolve_by_alias(self):
@@ -25,7 +25,7 @@ class TestResolveProject:
 
     def test_should_resolve_with_whitespace(self):
         proj = resolve_project("  马娘  ")
-        assert proj.key == "umamusume"
+        assert proj.key == "maniang"
 
     def test_should_raise_on_unknown_project(self):
         with pytest.raises(ValueError, match="未知项目"):

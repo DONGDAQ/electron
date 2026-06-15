@@ -94,10 +94,10 @@ class FeishuClient:
             response_body = resp.read().decode() if 'resp' in locals() else "No response body"
             raise RuntimeError(f"飞书API返回非JSON响应: {response_body[:200]}...")
 
-    def read_sheet(self, sheet_id: str | None = None, range_str: str | None = None) -> list[list[Any]]:
+    def read_sheet(self, sheet_id: str | None = None, range_str: str | None = None, render: str | None = None) -> list[list[Any]]:
         if sheet_id is None:
             sheet_id = self.sheet_id
-        """读取飞书表格，返回二维数组"""
+        """读取飞书表格，返回二维数组。render 可传 'ToString' 获取公式计算结果。"""
 
         # 检查 sheet_id 是否包含 !（如 "sheet_id!range" 格式）
         if '!' in sheet_id:
@@ -109,6 +109,8 @@ class FeishuClient:
             url = f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{self.spreadsheet_token}/values/{sheet_id}!{range_str}"
         else:
             url = f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{self.spreadsheet_token}/values/{sheet_id}"
+        if render:
+            url += f"?valueRenderOption={render}"
         result = self._api("GET", url)
         if result.get("code") != 0:
             raise RuntimeError(f"读取表格失败: {result}")

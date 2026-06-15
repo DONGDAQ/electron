@@ -65,5 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def configure_output() -> None:
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
+        try:
             stream.reconfigure(encoding="utf-8")
+        except (OSError, AttributeError):
+            pass

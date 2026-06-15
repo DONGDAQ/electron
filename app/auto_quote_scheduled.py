@@ -9,6 +9,7 @@ ROOT = Path(__file__).parent
 LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs" / "auto_quote"
 
 from quote_system.utils import save_auto_quote_log
+from quote_system.paths import get_quote_history_dir
 
 
 def _run_captured(label: str, fn):
@@ -55,12 +56,16 @@ if __name__ == "__main__":
     # 4399 在线表填表
     _run_captured("4399", run_4399)
 
-    # 归档已结算记录
+    # 同步 TK 飞书表数据到本地缓存
     try:
-        sys.path.insert(0, str(ROOT))
-        from settlement.settlement_tracker import archive_settled
-        n = archive_settled(months=3)
-        if n:
-            print(f"归档了 {n} 条已结算记录")
+        from quote_system.auto_fill_tk import sync_tk_data
+        sync_tk_data()
     except Exception as e:
-        print(f"归档失败: {e}")
+        print(f"TK 数据同步失败: {e}")
+
+    # 同步报告缓存
+    try:
+        from quote_system.report_cache import sync_report_cache
+        sync_report_cache()
+    except Exception as e:
+        print(f"报告缓存同步失败: {e}")

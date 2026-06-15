@@ -139,12 +139,6 @@ def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, it
     result = generate_quote(ROOT, request)
     print(f"  报价单已生成: {result.final_path}")
 
-    try:
-        from settlement.settlement_tracker import record_from_quote, add_record
-        add_record(record_from_quote(request, result.stats, result.final_path, source="auto"))
-    except Exception:
-        pass
-
     _copy_to_save_path(project.key, result.final_path)
 
     billable_words = huan_ta_billable_words(stats)

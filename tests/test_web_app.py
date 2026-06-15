@@ -29,7 +29,7 @@ class TestIndexPage:
         assert "text/html" in resp.content_type
 
     def test_should_contain_project_selection_with_valid_project(self, client):
-        resp = client.get("/?project=umamusume")
+        resp = client.get("/?project=maniang")
         assert resp.status_code == 200
 
     def test_should_handle_invalid_project_gracefully(self, client):
@@ -58,11 +58,62 @@ class TestReportPage:
         assert resp.status_code == 200
 
 
+class TestReportDashboard:
+    def test_should_return_empty_when_no_cache(self, client):
+        from quote_system.web_app import OUTPUTS_DIR
+        cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
+        existed = cache_file.exists()
+        if existed:
+            backup = cache_file.read_text(encoding="utf-8")
+            cache_file.unlink()
+        try:
+            resp = client.get("/api/report-dashboard")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["status"] == "empty"
+        finally:
+            if existed:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                cache_file.write_text(backup, encoding="utf-8")
+
+    def test_should_return_data_when_cache_exists(self, client):
+        from quote_system.web_app import OUTPUTS_DIR
+        import json
+        cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        existed = cache_file.exists()
+        if existed:
+            backup = cache_file.read_text(encoding="utf-8")
+        test_data = {
+            "sync_time": "2026-06-12T10:00:00",
+            "unsettled_count": 42,
+            "unsettled_amount": 66799.39,
+            "month_file_count": 5,
+            "month_total_amount": 10000.0,
+            "trend": [],
+            "company_summary": {},
+        }
+        try:
+            cache_file.write_text(json.dumps(test_data), encoding="utf-8")
+            resp = client.get("/api/report-dashboard")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["status"] == "success"
+            assert data["data"]["unsettled_count"] == 42
+            assert data["data"]["unsettled_amount"] == 66799.39
+            assert "today_runs" in data["data"]
+        finally:
+            if existed:
+                cache_file.write_text(backup, encoding="utf-8")
+            else:
+                cache_file.unlink(missing_ok=True)
+
+
 # ========== 报价生成端点测试 ==========
 
 class TestGenerateQuote:
     def test_should_reject_empty_upload(self, client):
-        resp = client.post("/generate", data={"project": "umamusume"})
+        resp = client.post("/generate", data={"project": "maniang"})
         assert resp.status_code in (200, 302)
         # 应返回错误 flash 消息（重定向到首页）
         if resp.status_code == 302:
@@ -83,7 +134,7 @@ class TestGenerateQuote:
 class TestSaveLanguageConfig:
     def test_should_accept_valid_config(self, client):
         resp = client.post("/save-language-config", data={
-            "project": "umamusume",
+            "project": "maniang",
             "language_names[]": ["日翻中"],
             "language_prices[]": ["0.24"],
             "default_languages[]": ["日翻中"],
@@ -100,7 +151,7 @@ class TestSaveLanguageConfig:
 
 class TestResetLanguageConfig:
     def test_should_reset_for_valid_project(self, client):
-        resp = client.post("/reset-language-config", data={"project": "umamusume"})
+        resp = client.post("/reset-language-config", data={"project": "maniang"})
         assert resp.status_code == 200
 
     def test_should_fail_missing_project(self, client):
@@ -113,7 +164,7 @@ class TestSaveProjectConfig:
     def test_should_accept_json_config(self, client):
         resp = client.post("/save-project-config",
                           data=json.dumps([{
-                              "project_key": "umamusume",
+                              "project_key": "maniang",
                               "display_name": "马娘",
                               "sort_order": 1,
                               "company": "Bilibili",
@@ -123,7 +174,7 @@ class TestSaveProjectConfig:
 
     def test_should_accept_form_config(self, client):
         resp = client.post("/save-project-config", data={
-            "project_key": "umamusume",
+            "project_key": "maniang",
             "display_name": "马娘",
             "sort_order": "1",
             "company": "Bilibili",
@@ -139,7 +190,7 @@ class TestSaveProjectConfig:
 class TestSaveSavePath:
     def test_should_accept_valid_data(self, client):
         resp = client.post("/save-save-path", data={
-            "project_key": "umamusume",
+            "project_key": "maniang",
             "save_path": r"D:\test\path",
         })
         assert resp.status_code == 200
@@ -172,7 +223,7 @@ class TestBasePaths:
 
 class TestQuoteHistory:
     def test_should_return_json_for_valid_project(self, client):
-        resp = client.get("/quote-history?project=umamusume")
+        resp = client.get("/quote-history?project=maniang")
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "success"
@@ -239,7 +290,7 @@ class TestLocalOnlyEndpoints:
 
 class TestSettlementPreview:
     def test_mamian_preview_with_valid_params(self, client):
-        resp = client.get("/api/settlement/mamian/preview?year=2026&month=6&project=umamusume")
+        resp = client.get("/api/settlement/mamian/preview?year=2026&month=6&project=maniang")
         assert resp.status_code == 200
 
     def test_mamian_preview_with_invalid_year(self, client):
@@ -271,7 +322,7 @@ class TestSettlementGenerate:
 
     def test_mamian_generate_with_no_data(self, client):
         resp = client.post("/api/settlement/mamian/generate-bill",
-                          data=json.dumps({"year": 2026, "month": 6, "project": "umamusume"}),
+                          data=json.dumps({"year": 2026, "month": 6, "project": "maniang"}),
                           content_type="application/json")
         assert resp.status_code in (200, 404)
 

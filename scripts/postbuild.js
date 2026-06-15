@@ -20,9 +20,25 @@ if (fs.existsSync(asarPath)) {
   console.log('已删除 app.asar');
 }
 
-// 2. 复制 flask_server.exe（如果存在）
+// 2. 复制 flask_server 目录（onedir 模式）或单个 exe（onefile 模式）
+const flaskDir = path.join(__dirname, '..', 'dist', 'flask_build', 'flask_server');
 const flaskExe = path.join(__dirname, '..', 'dist', 'flask_build', 'flask_server.exe');
-if (fs.existsSync(flaskExe)) {
+if (fs.existsSync(flaskDir) && fs.statSync(flaskDir).isDirectory()) {
+  // onedir 模式：复制整个目录
+  const destDir = path.join(distApp, 'flask_server');
+  fs.mkdirSync(destDir, { recursive: true });
+  const entries = fs.readdirSync(flaskDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(flaskDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      fs.cpSync(srcPath, destPath, { recursive: true });
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+  console.log('已复制 flask_server 目录');
+} else if (fs.existsSync(flaskExe)) {
   copy(flaskExe, path.join(distApp, 'flask_server.exe'));
   console.log('已复制 flask_server.exe');
 }

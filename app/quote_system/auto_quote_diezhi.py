@@ -133,6 +133,7 @@ def detect_batches(project_key: str) -> dict:
         spreadsheet_token=project.spreadsheet_token,
     )
     available_batches: list[int] = []
+    empty_batches: list[int] = []  # 数据为空的批次（仅提示，不阻止）
     try:
         meta = client._api("GET",
             f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{project.spreadsheet_token}/metainfo")
@@ -142,6 +143,13 @@ def detect_batches(project_key: str) -> dict:
                 b = _extract_batch_from_sheetname(title)
                 if b:
                     available_batches.append(b)
+                    # 额外检测是否有数据（前端可据此提示用户）
+                    try:
+                        sample = client.read_range("A1:B2", sheet_id=s["sheetId"])
+                        if not sample or not any(any(cell is not None for cell in row) for row in sample):
+                            empty_batches.append(b)
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -171,6 +179,7 @@ def detect_batches(project_key: str) -> dict:
         "last_batch": last_batch,
         "next_batch": next_batch,
         "available_batches": available_batches,
+        "empty_batches": empty_batches,
     }
 
 
@@ -372,6 +381,8 @@ def generate_batch_quote(
         raise ValueError(f"在线表中未找到批次 {batch_no} 的重复匹配率页")
 
     online_data = read_batch_sheet_data(project_key, batch_sheet_id)
+    if not online_data:
+        raise ValueError(f"批次 {batch_no} 的重复匹配率页数据为空，可能尚未填写，跳过报价")
 
     # 2) 获取交付日期
     delivery_date = get_delivery_date(project_key, batch_no)

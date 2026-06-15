@@ -9,15 +9,54 @@
   <script src="{{ url_for('static', filename='common.js') }}"></script>
   <style>
     .report-layout { display:flex; flex-direction:column; height:100%; }
-    .report-toolbar { display:flex; align-items:center; gap:12px; padding:16px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
+    .report-toolbar { display:flex; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
     .report-toolbar h2 { margin:0; font-size:18px; font-weight:600; }
-    .report-tabs { display:flex; gap:4px; margin-left:24px; background:var(--bg); border-radius:8px; padding:3px; }
-    .report-tab { padding:6px 16px; border:none; border-radius:6px; background:transparent; color:var(--muted); font-size:13px; cursor:pointer; transition:all .15s; }
-    .report-tab.active { background:var(--panel); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08); font-weight:500; }
-    .report-search { margin-left:auto; position:relative; }
-    .report-search input { padding:6px 12px 6px 32px; border:1px solid var(--line); border-radius:6px; background:var(--bg); font-size:13px; width:220px; outline:none; }
+    .report-toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+    .report-search { position:relative; }
+    .report-search input { padding:6px 12px 6px 32px; border:1px solid var(--line); border-radius:6px; background:var(--bg); font-size:13px; width:200px; outline:none; color:var(--ink); }
     .report-search input:focus { border-color:var(--accent); }
     .report-search .search-icon { position:absolute; left:9px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--muted); pointer-events:none; }
+
+    /* Dashboard 统计概览 */
+    .dashboard-bar { display:flex; gap:12px; padding:16px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; flex-wrap:wrap; }
+    .dashboard-card { flex:1; min-width:150px; max-width:240px; padding:14px 18px; border-radius:10px; border:1px solid var(--line); background:var(--bg); transition:border-color .2s; }
+    .dashboard-card:hover { border-color:var(--accent); }
+    .dashboard-card .dc-label { font-size:12px; color:var(--muted); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+    .dashboard-card .dc-label i { width:14px; height:14px; }
+    .dashboard-card .dc-value { font-size:22px; font-weight:700; color:var(--ink); }
+    .dashboard-card .dc-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+    .dashboard-card .dc-value.warn { color:#f59e0b; }
+    .dashboard-card .dc-value.good { color:#10b981; }
+
+    /* 公司维度汇总 */
+    .company-summary-bar { display:flex; gap:10px; padding:8px 24px 12px; background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0; flex-wrap:wrap; }
+    .company-chip { display:flex; align-items:center; gap:8px; padding:6px 14px; border-radius:8px; border:1px solid var(--line); background:var(--bg); font-size:12px; }
+    .company-chip .cc-name { font-weight:600; color:var(--ink); }
+    .company-chip .cc-count { color:var(--muted); }
+    .company-chip .cc-amount { color:#f59e0b; font-weight:500; }
+    .company-chip:hover { border-color:var(--accent); background:var(--accent-soft); }
+
+    /* 趋势图区域 */
+    .dashboard-trend { padding:0 24px 12px; background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0; }
+    .dashboard-trend-header { display:flex; align-items:center; gap:8px; padding:8px 0; }
+    .dashboard-trend-header span { font-size:12px; color:var(--muted); font-weight:500; }
+    .trend-chart { width:100%; height:80px; }
+
+    /* 报价单视图切换 */
+    .view-toggle { display:flex; gap:2px; background:var(--bg); border-radius:6px; padding:2px; }
+    .view-toggle button { padding:4px 10px; border:none; border-radius:4px; background:transparent; color:var(--muted); font-size:12px; cursor:pointer; transition:all .12s; }
+    .view-toggle button.active { background:var(--panel); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.06); }
+
+    /* 日期范围筛选 */
+    .date-filter { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); }
+    .date-filter input[type="date"] { padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); font-size:12px; outline:none; width:120px; }
+    .date-filter input[type="date"]:focus { border-color:var(--accent); }
+
+    /* 导出按钮 */
+    .btn-export { padding:5px 12px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px; transition:all .12s; }
+    .btn-export:hover { border-color:var(--accent); color:var(--accent); }
+    .btn-export i { width:14px; height:14px; }
+
     .report-body { flex:1; overflow-y:auto; padding:20px 24px; }
     .report-empty { text-align:center; padding:60px 20px; color:var(--muted); }
     .report-empty i { width:48px; height:48px; margin-bottom:12px; }
@@ -68,16 +107,24 @@
     .recent-item .file-actions i { width:16px; height:16px; }
 
     /* 执行记录 */
+    .log-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .log-filter-select { padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); font-size:12px; outline:none; }
     .log-list { display:grid; gap:6px; }
     .log-item { border:1px solid var(--line); border-radius:8px; overflow:hidden; transition:border-color .12s; }
     .log-item:hover { border-color:#94a3b8; }
+    .log-item.log-error { border-left:3px solid #ef4444; }
+    .log-item.log-success { border-left:3px solid #10b981; }
     .log-header { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; user-select:none; }
     .log-header .log-status { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
     .log-status.success { background:#10b981; }
     .log-status.error { background:#ef4444; }
     .log-header .log-project { font-size:12px; font-weight:500; padding:2px 8px; border-radius:4px; background:var(--bg); color:var(--muted); flex-shrink:0; }
     .log-header .log-time { font-size:12px; color:var(--muted); flex-shrink:0; }
+    .log-header .log-status-text { font-size:11px; font-weight:500; flex-shrink:0; }
+    .log-header .log-status-text.ok { color:#10b981; }
+    .log-header .log-status-text.fail { color:#ef4444; }
     .log-header .log-summary { flex:1; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0 8px; }
+    .log-header .log-duration { font-size:11px; color:var(--muted); flex-shrink:0; }
     .log-header .log-toggle { font-size:11px; color:var(--accent); flex-shrink:0; }
     .log-body { display:none; border-top:1px solid var(--line); background:#1a1f2e; }
     .log-body.open { display:block; }
@@ -93,16 +140,14 @@
     .records-table tr:hover td { background:var(--bg); }
     .records-table .source-tag { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:500; }
     .records-table .source-tag.manual { background:#3b82f620; color:#60a5fa; }
-    .records-table .source-tag.mobile { background:#8b5cf620; color:#a78bfa; }
     .records-table .source-tag.auto { background:#10b98120; color:#34d399; }
     .records-table .source-tag.batch { background:#f59e0b20; color:#fbbf24; }
-    .records-table .settled-yes { color:#10b981; }
-    .records-table .settled-no { color:var(--muted); }
 
-    /* 方案3 双栏布局 */
+    /* 双栏布局 */
     .records-dual { display:flex; height:100%; overflow:hidden; }
-    .records-project-panel { width:220px; border-right:1px solid var(--line); overflow-y:auto; padding:12px; flex-shrink:0; }
-    .records-panel-header { font-size:12px; color:var(--muted); font-weight:500; padding:4px 8px; margin-bottom:8px; }
+    .records-project-panel { width:260px; border-right:1px solid var(--line); overflow-y:auto; padding:12px; flex-shrink:0; }
+    .records-panel-header { font-size:12px; color:var(--muted); font-weight:500; padding:4px 8px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+    .company-group-label { font-size:11px; color:var(--muted); font-weight:600; padding:8px 8px 4px; text-transform:uppercase; letter-spacing:.5px; }
     .records-project-card { padding:10px 12px; border-radius:8px; cursor:pointer; margin-bottom:4px; transition:all .12s; border:1px solid transparent; }
     .records-project-card:hover { background:var(--nav-hover); border-color:var(--line); }
     .records-project-card.selected { background:var(--accent-soft); border-color:var(--accent); }
@@ -120,7 +165,6 @@
     .records-summary-item .rs-label { color:var(--muted); margin-right:4px; }
     .records-summary-item .rs-value { font-weight:600; color:var(--ink); }
     .records-summary-item .rs-warn { color:#f59e0b; }
-    .records-row-settled td { opacity:.45; }
     .records-status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
     .records-status-dot.green { background:#10b981; }
     .records-status-dot.gray { background:#64748b; }
@@ -168,23 +212,59 @@
 
     <section class="workspace">
       <div class="report-layout">
+        <!-- 工具栏 -->
         <div class="report-toolbar">
           <h2>报价报告</h2>
-          <div class="report-tabs">
-            <button class="report-tab active" data-tab="project" onclick="switchReportTab('project')">按项目</button>
-            <button class="report-tab" data-tab="recent" onclick="switchReportTab('recent')">最近文件</button>
-            <button class="report-tab" data-tab="logs" onclick="switchReportTab('logs')">执行记录</button>
-            <button class="report-tab" data-tab="records" onclick="switchReportTab('records')">报价记录</button>
+          <div class="report-toolbar-right">
+            <button class="icon-button" onclick="toggleTheme()" title="切换主题">
+              <i data-lucide="moon" id="themeIcon"></i>
+            </button>
           </div>
-          <div class="report-search">
-            <i data-lucide="search" class="search-icon"></i>
-            <input type="text" id="reportSearch" placeholder="搜索..." oninput="filterReports()">
-          </div>
-          <button class="icon-button" onclick="toggleTheme()" title="切换主题" style="margin-left:8px;">
-            <i data-lucide="moon" id="themeIcon"></i>
-          </button>
         </div>
 
+        <!-- Dashboard 统计概览 -->
+        <div class="dashboard-bar" id="dashboardBar" style="display:none;">
+          <div class="dashboard-card">
+            <div class="dc-label"><i data-lucide="clock"></i> 待结算需求</div>
+            <div class="dc-value warn" id="dcUnsettled">-</div>
+            <div class="dc-sub" id="dcUnsettledAmount"></div>
+          </div>
+          <div class="dashboard-card">
+            <div class="dc-label"><i data-lucide="file-spreadsheet"></i> 本月报价单</div>
+            <div class="dc-value" id="dcFileCount">-</div>
+          </div>
+          <div class="dashboard-card">
+            <div class="dc-label"><i data-lucide="banknote"></i> 本月总额</div>
+            <div class="dc-value good" id="dcMonthAmount">-</div>
+          </div>
+          <div class="dashboard-card">
+            <div class="dc-label"><i data-lucide="play-circle"></i> 今日执行</div>
+            <div class="dc-value" id="dcTodayRuns">-</div>
+          </div>
+        </div>
+
+        <!-- 趋势图 -->
+        <div class="dashboard-trend" id="dashboardTrend" style="display:none;">
+          <div class="dashboard-trend-header">
+            <span>近30天报价金额趋势</span>
+          </div>
+          <svg id="trendChart" class="trend-chart" viewBox="0 0 800 80" preserveAspectRatio="none"></svg>
+        </div>
+
+        <!-- 公司维度汇总 -->
+        <div class="company-summary-bar" id="companySummaryBar" style="display:none;"></div>
+
+        <!-- 公司详情 -->
+        <div id="companyDetail" style="display:none;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <button class="icon-button" onclick="closeCompanyDetail()" title="返回"><i data-lucide="arrow-left"></i></button>
+            <h3 id="detailCompanyName" style="margin:0;font-size:16px;font-weight:600;"></h3>
+            <span id="detailCompanySummary" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+          <div id="detailProjectList"></div>
+        </div>
+
+        <!-- 内容主体 -->
         <div class="report-body" id="reportBody">
           <div class="report-loading" style="text-align:center;padding:60px;color:var(--muted);">
             <i data-lucide="loader" class="loading" style="width:32px;height:32px;"></i>
@@ -212,32 +292,17 @@
     lucide.createIcons();
     (function(){ var ic=document.getElementById('themeIcon'); if(ic) ic.setAttribute('data-lucide', document.body.classList.contains('light-theme')?'sun':'moon'); lucide.createIcons(); })();
 
-    let allProjectData = null;
-    let allRecentData = null;
-    let allLogData = null;
-    let allRecordsData = null;
-    let currentTab = 'project';
-    let recordsSortKey = 'quote_date';
-    let recordsSortAsc = false;
-    let selectedRecordProject = '';
+    let dashboardData = null;
+    let selectedCompany = null;
 
     document.addEventListener('DOMContentLoaded', () => {
-      bindReportFileActions();
       loadReportData();
     });
 
     function loadReportData() {
-      Promise.all([
-        fetch('/quote-history').then(r => r.json()),
-        fetch('/api/all-quotes').then(r => r.json()),
-        fetch('/api/auto-quote-logs').then(r => r.json()),
-        fetch('/api/quote-records').then(r => r.json()),
-      ]).then(([projectRes, recentRes, logRes, recordsRes]) => {
-        if (projectRes.status === 'success') allProjectData = projectRes.data || [];
-        if (recentRes.status === 'success') allRecentData = recentRes.data || [];
-        if (logRes.status === 'success') allLogData = logRes.data || [];
-        if (recordsRes.status === 'success') allRecordsData = recordsRes.data || [];
-        renderCurrentTab();
+      fetch('/api/report-dashboard').then(r => r.json()).then(dashRes => {
+        if (dashRes.status === 'success') dashboardData = dashRes.data || {};
+        renderDashboard();
       }).catch(err => {
         document.getElementById('reportBody').innerHTML =
           '<div class="report-empty"><i data-lucide="alert-circle"></i><p>加载失败: ' + err.message + '</p></div>';
@@ -245,412 +310,98 @@
       });
     }
 
-    function switchReportTab(tab) {
-      currentTab = tab;
-      document.querySelectorAll('.report-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-      document.getElementById('reportSearch').value = '';
-      renderCurrentTab();
-    }
+    // ========== Dashboard ==========
+    function renderDashboard() {
+      if (!dashboardData) return;
+      const bar = document.getElementById('dashboardBar');
+      const trend = document.getElementById('dashboardTrend');
+      bar.style.display = 'flex';
+      trend.style.display = 'block';
 
-    function renderCurrentTab() {
-      if (currentTab === 'project') renderProjectView();
-      else if (currentTab === 'recent') renderRecentView();
-      else if (currentTab === 'logs') renderLogView();
-      else renderRecordsView();
-    }
+      document.getElementById('dcFileCount').textContent = dashboardData.month_file_count + ' 份';
+      document.getElementById('dcMonthAmount').textContent = '\u00a5' + Math.round(dashboardData.month_total_amount).toLocaleString();
+      document.getElementById('dcUnsettled').textContent = dashboardData.unsettled_count + ' 份';
+      document.getElementById('dcUnsettledAmount').textContent = '\u00a5' + Math.round(dashboardData.unsettled_amount).toLocaleString();
+      document.getElementById('dcTodayRuns').textContent = dashboardData.today_runs + ' 次';
 
-    function renderProjectView() {
-      const body = document.getElementById('reportBody');
-      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
-      if (!allProjectData || allProjectData.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="folder-open"></i><p>暂无报价单记录</p></div>';
-        lucide.createIcons(); return;
-      }
-      let html = '';
-      allProjectData.forEach(company => {
-        // 统计该公司下所有文件
-        let totalFiles = 0;
-        const projectFolders = (company.folders || []).filter(f => {
-          if (!search) return true;
-          const match = (f.files || []).some(file => file.name.toLowerCase().includes(search));
-          if (match) f.files.forEach(file => { if (file.name.toLowerCase().includes(search)) totalFiles++; });
-          return match;
-        });
-        // 不过滤搜索时统计全部
-        if (!search) {
-          (company.folders || []).forEach(f => totalFiles += (f.files || []).length);
-        }
-        if (projectFolders.length === 0 && search) return;
+      renderTrendChart(dashboardData.trend || []);
 
-        html += '<div class="report-company-group">'
-          + '<div class="report-company-header" onclick="toggleCompany(this)" style="cursor:pointer;user-select:none;">'
-          + '<i data-lucide="chevron-down" class="company-chevron" style="width:16px;height:16px;transition:transform.15s;"></i>'
-          + '<i data-lucide="building" style="width:18px;height:18px;color:var(--muted);"></i>'
-          + '<h3>' + escHtml(company.name) + '</h3>'
-          + '<span class="count">' + totalFiles + ' 个文件</span>'
-          + '</div>';
-
-        // 公司下按项目分组
-        (projectFolders.length ? projectFolders : (company.folders || [])).forEach(project => {
-          const projectFiles = search
-            ? (project.files || []).filter(f => f.name.toLowerCase().includes(search))
-            : (project.files || []);
-          if (projectFiles.length === 0 && search) return;
-
-          html += '<div class="report-project-group">'
-            + '<div class="report-project-header" onclick="toggleProject(this)">'
-            + '<i data-lucide="chevron-right"></i>'
-            + '<span>' + escHtml(project.name) + '</span>'
-            + '<span class="count">' + projectFiles.length + '</span>'
-            + '</div>'
-            + '<div class="report-file-grid">';
-          projectFiles.forEach(file => html += renderFileCard(file, project.name));
-          html += '</div></div>';
-        });
-
-        html += '</div>';
-      });
-      body.innerHTML = html;
-      lucide.createIcons();
-    }
-
-    function toggleCompany(header) {
-      header.classList.toggle('collapsed');
-      const chevron = header.querySelector('.company-chevron');
-      if (chevron) chevron.style.transform = header.classList.contains('collapsed') ? 'rotate(-90deg)' : '';
-      let sibling = header.nextElementSibling;
-      while (sibling) {
-        if (sibling.classList.contains('report-company-group')) break;
-        sibling.style.display = header.classList.contains('collapsed') ? 'none' : '';
-        sibling = sibling.nextElementSibling;
-      }
-    }
-
-    function toggleProject(header) {
-      header.classList.toggle('collapsed');
-      const grid = header.nextElementSibling;
-      if (grid) grid.style.display = header.classList.contains('collapsed') ? 'none' : '';
-    }
-
-    function renderFileCard(file, projectLabel) {
-      const dt = new Date(file.mtime * 1000);
-      const dateStr = fmtDateTime(dt);
-      const sizeStr = fmtSize(file.size);
-      const p = escHtml(encodeURIComponent(file.path));
-      return '<div class="report-file-row" data-path="' + p + '">'
-        + '<i data-lucide="file-spreadsheet" class="file-icon" data-action="open"></i>'
-        + '<div class="file-info" data-action="open">'
-        + '<div class="file-name">' + escHtml(file.name) + '</div>'
-        + '<div class="file-meta">' + escHtml(projectLabel || '') + ' · ' + dateStr + ' · ' + sizeStr + '</div>'
-        + '</div>'
-        + '<div class="file-actions">'
-        + '<button data-action="open" title="打开"><i data-lucide="external-link"></i></button>'
-        + '<button data-action="folder" title="打开所在文件夹"><i data-lucide="folder-open"></i></button>'
-        + '<button class="danger" data-action="delete" title="删除"><i data-lucide="trash-2"></i></button>'
-        + '</div></div>';
-    }
-
-    function renderRecentView() {
-      const body = document.getElementById('reportBody');
-      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
-      if (!allRecentData || allRecentData.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="folder-open"></i><p>暂无报价单记录</p></div>';
-        lucide.createIcons(); return;
-      }
-      let data = search ? allRecentData.filter(f => f.name.toLowerCase().includes(search)) : allRecentData;
-      if (data.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="search"></i><p>没有匹配的报价单</p></div>';
-        lucide.createIcons(); return;
-      }
-      let html = '<div class="recent-list">';
-      data.forEach(f => {
-        const dt = new Date(f.mtime * 1000);
-        const dateStr = fmtDateTime(dt);
-        const sizeStr = fmtSize(f.size);
-        const p = escHtml(encodeURIComponent(f.path));
-        html += '<div class="recent-item" data-path="' + p + '">'
-          + '<i data-lucide="file-spreadsheet" class="file-icon" data-action="open"></i>'
-          + '<div class="file-info" data-action="open">'
-          + '<div class="file-name">' + escHtml(f.name) + '</div>'
-          + '<div class="file-meta">' + dateStr + '</div>'
+      // company summary
+      const cs = dashboardData.company_summary || {};
+      const entries = Object.entries(cs).sort((a, b) => b[1].amount - a[1].amount);
+      const compBar = document.getElementById('companySummaryBar');
+      if (entries.length > 0) {
+        compBar.style.display = 'flex';
+        compBar.innerHTML = entries.map(([name, info]) =>
+          '<div class="company-chip" style="cursor:pointer;" onclick="showCompanyDetail(\'' + escHtml(name).replace(/'/g, "\\'") + '\')">'
+          + '<span class="cc-name">' + escHtml(name) + '</span>'
+          + '<span class="cc-count">' + info.count + ' 份</span>'
+          + '<span class="cc-amount">¥' + Math.round(info.amount).toLocaleString() + '</span>'
           + '</div>'
-          + '<span class="file-project">' + escHtml(f.project || '未分类') + '</span>'
-          + '<span class="file-size">' + sizeStr + '</span>'
-          + '<div class="file-actions">'
-          + '<button data-action="open" title="打开"><i data-lucide="external-link"></i></button>'
-          + '<button data-action="folder" title="打开所在文件夹"><i data-lucide="folder-open"></i></button>'
-          + '<button class="danger" data-action="delete" title="删除"><i data-lucide="trash-2"></i></button>'
-          + '</div></div>';
-      });
-      html += '</div>';
-      body.innerHTML = html;
+        ).join('');
+      } else {
+        compBar.style.display = 'none';
+      }
+    }
+
+    function renderTrendChart(trend) {
+      const svg = document.getElementById('trendChart');
+      if (!trend.length) { svg.innerHTML = ''; return; }
+      const amounts = trend.map(t => t.amount);
+      const maxAmt = Math.max(...amounts, 1);
+      const w = 800, h = 80, pad = 2;
+
+      const points = trend.map((t, i) => ({
+        x: pad + (i / Math.max(trend.length - 1, 1)) * (w - 2 * pad),
+        y: h - pad - (t.amount / maxAmt) * (h - 2 * pad)
+      }));
+
+      let pathD = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('');
+      let areaD = pathD + ' L' + points[points.length-1].x.toFixed(1) + ' ' + h + ' L' + points[0].x.toFixed(1) + ' ' + h + ' Z';
+
+      svg.innerHTML = '<defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>'
+        + '<stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>'
+        + '</linearGradient></defs>'
+        + '<path d="' + areaD + '" fill="url(#trendGrad)"/>'
+        + '<path d="' + pathD + '" fill="none" stroke="#3b82f6" stroke-width="1.5" vector-effect="non-scaling-stroke"/>';
+    }
+
+
+    // ========== 公司详情 ==========
+    function showCompanyDetail(companyName) {
+      if (!dashboardData) return;
+      const cs = dashboardData.company_summary || {};
+      const info = cs[companyName];
+      if (!info) return;
+
+      selectedCompany = companyName;
+      document.getElementById('companySummaryBar').style.display = 'none';
+      document.getElementById('dashboardTrend').style.display = 'none';
+
+      const detail = document.getElementById('companyDetail');
+      detail.style.display = 'block';
+      document.getElementById('detailCompanyName').textContent = companyName;
+      document.getElementById('detailCompanySummary').textContent = info.count + ' 份 | ¥' + Math.round(info.amount).toLocaleString();
+
+      const projects = info.projects || {};
+      const projEntries = Object.entries(projects).sort((a, b) => b[1] - a[1]);
+      const listDiv = document.getElementById('detailProjectList');
+      listDiv.innerHTML = '<table class="records-table" style="max-width:600px;">'
+        + '<thead><tr><th>项目</th><th style="text-align:right;">数量</th></tr></thead>'
+        + '<tbody>'
+        + projEntries.map(([name, count]) =>
+          '<tr><td>' + escHtml(name) + '</td><td style="text-align:right;">' + count + ' 份</td></tr>'
+        ).join('')
+        + '</tbody></table>';
       lucide.createIcons();
     }
 
-    function renderLogView() {
-      const body = document.getElementById('reportBody');
-      const search = document.getElementById('reportSearch').value.toLowerCase().trim();
-      if (!allLogData || allLogData.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="terminal"></i><p>暂无执行记录</p></div>';
-        lucide.createIcons(); return;
-      }
-      let data = search ? allLogData.filter(l => (l.project||'').toLowerCase().includes(search) || (l.summary||'').toLowerCase().includes(search)) : allLogData;
-      if (data.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="search"></i><p>没有匹配的记录</p></div>';
-        lucide.createIcons(); return;
-      }
-      let html = '<div class="log-list">';
-      data.forEach((log, i) => {
-        const dt = new Date(log.timestamp);
-        const timeStr = fmtDateTime(dt);
-        const proj = escHtml(LOG_LABELS[log.project] || log.project);
-        html += '<div class="log-item">'
-          + '<div class="log-header" onclick="toggleLog(this)">'
-          + '<span class="log-status ' + escHtml(log.status) + '"></span>'
-          + '<span class="log-project">' + proj + '</span>'
-          + '<span class="log-time">' + timeStr + '</span>'
-          + '<span class="log-summary">' + escHtml(log.summary || '') + '</span>'
-          + '<span class="log-toggle">展开日志</span>'
-          + '</div>'
-          + '<div class="log-body" data-path="' + encodeURIComponent(log.log_file) + '">'
-          + '<pre>加载中...</pre>'
-          + '</div>'
-          + '</div>';
-      });
-      html += '</div>';
-      body.innerHTML = html;
-      lucide.createIcons();
-    }
-
-    function toggleLog(header) {
-      const body = header.nextElementSibling;
-      const toggle = header.querySelector('.log-toggle');
-      if (body.classList.contains('open')) {
-        body.classList.remove('open');
-        toggle.textContent = '展开日志';
-        return;
-      }
-      body.classList.add('open');
-      toggle.textContent = '收起日志';
-      // 懒加载日志内容
-      const pre = body.querySelector('pre');
-      if (pre && pre.textContent === '加载中...') {
-        const path = decodeURIComponent(body.dataset.path);
-        fetch('/api/auto-quote-log-content?path=' + encodeURIComponent(path))
-          .then(r => r.json())
-          .then(d => { if (d.status === 'success') pre.textContent = d.content; else pre.textContent = '加载失败: ' + d.message; })
-          .catch(e => pre.textContent = '加载失败: ' + e.message);
-      }
-    }
-
-    const LOG_LABELS = {
-      huanta: '幻塔', yihuan_nei: '异环游戏内', yihuan_faxing: '异环发行',
-      zhan_shuang: '战双邮件', zhan_shuang_feishu: '战双飞书', '4399': '4399 填表',
-    };
-
-    const SOURCE_LABELS = { manual: '手动', mobile: '移动端', auto: '自动', batch: '批次' };
-    const PROJECT_LABELS = {
-      huanta: '幻塔', yihuan_nei: '异环游戏内', yihuan_faxing: '异环发行',
-      zhan_shuang: '战双版更', zhan_shuang_faxing: '战双发行',
-      umamusume: '马娘', bang2: 'BANG2', hbr: '炽焰天穹', tk: 'TK',
-      liandishenkong: '恋与深空', shining_nikki: '闪暖', niki_xinzuo: 'ニキ新作',
-      '4399': '4399', zulong: '祖龙',
-    };
-
-    function renderRecordsView() {
-      const body = document.getElementById('reportBody');
-      if (!allRecordsData || allRecordsData.length === 0) {
-        body.innerHTML = '<div class="report-empty"><i data-lucide="clipboard-list"></i><p>暂无报价记录</p></div>';
-        lucide.createIcons(); return;
-      }
-
-      const projects = {};
-      allRecordsData.forEach(r => {
-        const pk = r.project_key || 'unknown';
-        if (!projects[pk]) projects[pk] = { records: [], totalWords: 0, totalAmount: 0, pending: 0, settled: 0 };
-        projects[pk].records.push(r);
-        projects[pk].totalWords += (r.billable_words || 0);
-        projects[pk].totalAmount += (r.total_price || 0);
-        if (r.settled) projects[pk].settled++; else projects[pk].pending++;
-      });
-
-      const projKeys = Object.keys(projects).sort((a, b) => {
-        if (projects[b].pending !== projects[a].pending) return projects[b].pending - projects[a].pending;
-        return projects[b].records.length - projects[a].records.length;
-      });
-
-      if (!selectedRecordProject || !projects[selectedRecordProject]) {
-        selectedRecordProject = projKeys[0] || '';
-      }
-
-      let html = '<div class="records-dual">';
-
-      html += '<div class="records-project-panel"><div class="records-panel-header">📊 项目汇总</div>';
-      projKeys.forEach(pk => {
-        const p = projects[pk];
-        const sel = pk === selectedRecordProject ? ' selected' : '';
-        const statusIcon = p.pending > 0 ? '🟢' : '<span class="records-status-dot gray" style="display:inline-block;width:8px;height:8px;border-radius:50%;"></span>';
-        const statusText = p.pending > 0
-          ? '<span class="rp-pending">未结算 ' + p.pending + '</span>'
-          : '<span class="rp-done">全部已结算</span>';
-        const amountStr = p.totalAmount > 0 ? '¥' + p.totalAmount.toLocaleString() : '-';
-        html += '<div class="records-project-card' + sel + '" onclick="selectRecordProject(\'' + escHtml(pk) + '\')">'
-          + '<div class="rp-name">' + statusIcon + ' ' + escHtml(PROJECT_LABELS[pk] || pk) + '</div>'
-          + '<div class="rp-stats"><span>' + p.records.length + ' 条</span>' + statusText + '</div>'
-          + '<div class="rp-amount">' + amountStr + '</div>'
-          + '</div>';
-      });
-      html += '</div>';
-
-      html += '<div class="records-detail">';
-      const sp = projects[selectedRecordProject];
-      if (sp) {
-        const projName = PROJECT_LABELS[selectedRecordProject] || selectedRecordProject;
-        html += '<div class="records-detail-header">'
-          + '<span class="records-detail-title">' + escHtml(projName) + '</span>'
-          + '<div style="margin-left:auto;display:flex;gap:8px;">'
-          + '<select class="filter-select" style="padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font-size:12px;" onchange="recordsSortKey=this.value;renderRecordsView()">'
-          + '<option value="quote_date"' + (recordsSortKey==='quote_date'?' selected':'') + '>按委托日</option>'
-          + '<option value="delivery_date"' + (recordsSortKey==='delivery_date'?' selected':'') + '>按交付日</option>'
-          + '<option value="total_price"' + (recordsSortKey==='total_price'?' selected':'') + '>按金额</option>'
-          + '</select>'
-          + '</div></div>';
-
-        const search = document.getElementById('reportSearch').value.toLowerCase().trim();
-        let detailData = sp.records;
-        if (search) detailData = detailData.filter(r => (r.req_name||'').toLowerCase().includes(search));
-        detailData = [...detailData].sort((a, b) => {
-          let va = a[recordsSortKey] ?? '', vb = b[recordsSortKey] ?? '';
-          if (typeof va === 'number') return recordsSortAsc ? va - vb : vb - va;
-          return recordsSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
-        });
-
-        html += '<div class="records-detail-body"><table class="records-table"><thead><tr>';
-        html += '<th style="width:30px;"></th>';
-        [{k:'req_name',l:'需求名',w:'auto'},{k:'quote_date',l:'委托日',w:'80px'},{k:'delivery_date',l:'交付日',w:'80px'},{k:'source',l:'来源',w:'50px'},{k:'billable_words',l:'字数',w:'70px'},{k:'total_price',l:'总额',w:'80px'}].forEach(c => {
-          const sorted = recordsSortKey === c.k;
-          const arrow = sorted ? (recordsSortAsc ? '▲' : '▼') : '▲';
-          html += '<th class="' + (sorted ? 'sorted' : '') + '" style="width:' + c.w + '" onclick="sortRecords(\'' + c.k + '\')">'
-            + c.l + '<span class="sort-arrow">' + arrow + '</span></th>';
-        });
-        html += '</tr></thead><tbody>';
-        detailData.forEach(r => {
-          const src = r.source || 'manual';
-          const dotClass = r.settled ? 'gray' : 'green';
-          const rowClass = r.settled ? ' records-row-settled' : '';
-          html += '<tr class="' + rowClass + '">'
-            + '<td><span class="records-status-dot ' + dotClass + '"></span></td>'
-            + '<td title="' + escHtml(r.req_name) + '">' + escHtml((r.req_name||'').length > 35 ? r.req_name.slice(0,35)+'...' : r.req_name) + '</td>'
-            + '<td style="color:var(--muted);font-size:12px;">' + escHtml(r.quote_date || '-') + '</td>'
-            + '<td style="color:var(--muted);font-size:12px;">' + escHtml(r.delivery_date || '-') + '</td>'
-            + '<td><span class="source-tag ' + escHtml(src) + '">' + escHtml(SOURCE_LABELS[src] || src) + '</span></td>'
-            + '<td style="text-align:right;color:var(--muted)">' + (r.billable_words || 0).toLocaleString() + '</td>'
-            + '<td style="text-align:right">' + (r.total_price || 0).toFixed(2) + '</td>'
-            + '</tr>';
-        });
-        html += '</tbody></table></div>';
-
-        const pending = sp.pending;
-        const pendingAmount = sp.records.filter(r => !r.settled).reduce((s, r) => s + (r.total_price || 0), 0);
-        html += '<div class="records-detail-summary">'
-          + '<span class="records-summary-item"><span class="rs-label">总记录</span><span class="rs-value">' + sp.records.length + ' 条</span></span>'
-          + '<span class="records-summary-item"><span class="rs-label">总字数</span><span class="rs-value">' + sp.totalWords.toLocaleString() + '</span></span>'
-          + '<span class="records-summary-item"><span class="rs-label">总额</span><span class="rs-value">¥' + sp.totalAmount.toLocaleString() + '</span></span>'
-          + '<span class="records-summary-item"><span class="rs-label">未结算</span><span class="rs-value rs-warn">' + pending + ' 条 · ¥' + pendingAmount.toLocaleString() + '</span></span>'
-          + '</div>';
-      }
-      html += '</div></div>';
-
-      body.innerHTML = html;
-      lucide.createIcons();
-    }
-
-    function selectRecordProject(pk) {
-      selectedRecordProject = pk;
-      renderRecordsView();
-    }
-
-    function sortRecords(key) {
-      if (recordsSortKey === key) recordsSortAsc = !recordsSortAsc;
-      else { recordsSortKey = key; recordsSortAsc = false; }
-      renderRecordsView();
-    }
-
-    function filterReports() { renderCurrentTab(); }
-
-    function bindReportFileActions() {
-      const body = document.getElementById('reportBody');
-      body.addEventListener('click', function(e) {
-        const actionEl = e.target.closest('[data-action]');
-        if (!actionEl) return;
-        const row = actionEl.closest('[data-path]');
-        if (!row) return;
-        const p = decodeURIComponent(row.dataset.path || '');
-        const action = actionEl.dataset.action;
-        if (action === 'open') openFile(p);
-        else if (action === 'folder') openFolder(p);
-        else if (action === 'delete') delFile(p, actionEl);
-      });
-      body.addEventListener('contextmenu', function(e) {
-        const row = e.target.closest('[data-path]');
-        if (!row) return;
-        e.preventDefault();
-        showCtx(e, decodeURIComponent(row.dataset.path || ''));
-      });
-    }
-
-    function findReportRowByPath(p) {
-      const encoded = encodeURIComponent(p);
-      return Array.from(document.querySelectorAll('[data-path]')).find(el => el.dataset.path === encoded);
-    }
-
-    function openFile(p) {
-      if (window.electronAPI) window.electronAPI.openFile(p);
-      else fetch('/open-file?path=' + encodeURIComponent(p)).then(r=>r.json()).then(d=>{if(d.status!=='success')showToast('打开失败: '+d.message,1);}).catch(e=>showToast('打开失败: '+e.message,1));
-    }
-    function openFolder(p) {
-      if (window.electronAPI) window.electronAPI.openFileLocation(p);
-      else window.open('/open-folder?path=' + encodeURIComponent(p));
-    }
-    function delFile(p, btn) {
-      if (!confirm('确定要删除这个报价单吗？\n' + p.split('\\').pop().split('/').pop())) return;
-      if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
-      fetch('/delete-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})})
-        .then(r=>r.json()).then(d=>{
-          if(d.status==='success'){
-            (btn ? btn.closest('.report-file-row,.recent-item') : findReportRowByPath(p))?.remove();
-            showToast('已删除');
-            loadReportData();
-          }else{
-            showToast('删除失败: '+(d.message||'未知错误'),1);
-            if (btn) { btn.disabled=false; btn.style.opacity='1'; }
-          }
-        })
-        .catch(e=>{showToast('删除失败: '+e.message,1); if (btn) { btn.disabled=false; btn.style.opacity='1'; }});
-    }
-
-    function showCtx(e, p) {
-      e.preventDefault();
-      const old = document.querySelector('.context-menu'); if(old) old.remove();
-      const menu = document.createElement('div');
-      menu.className = 'context-menu';
-      menu.style.cssText = 'position:fixed;left:'+e.clientX+'px;top:'+e.clientY+'px;background:#1e2937;border:1px solid #3b4754;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;overflow:hidden;';
-      [
-        {label:'打开文件',icon:'file-spreadsheet',action:()=>openFile(p)},
-        {label:'打开所在文件夹',icon:'folder-open',action:()=>openFolder(p)},
-        {label:'删除',icon:'trash-2',action:()=>delFile(p,null)},
-      ].forEach(item=>{
-        const el=document.createElement('div');
-        el.style.cssText='padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;color:#e2e8f0;transition:background.15s;';
-        el.innerHTML='<i data-lucide="'+item.icon+'" style="width:16px;height:16px;"></i><span>'+item.label+'</span>';
-        el.onclick=()=>{item.action();menu.remove();};
-        el.onmouseenter=()=>el.style.background='#3b4754';
-        el.onmouseleave=()=>el.style.background='transparent';
-        menu.appendChild(el);
-      });
-      document.body.appendChild(menu);
-      lucide.createIcons();
-      document.addEventListener('click',function h(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',h);}});
+    function closeCompanyDetail() {
+      selectedCompany = null;
+      document.getElementById('companyDetail').style.display = 'none';
+      document.getElementById('companySummaryBar').style.display = 'flex';
+      document.getElementById('dashboardTrend').style.display = 'block';
     }
 
     function fmtDateTime(d) {

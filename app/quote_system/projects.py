@@ -23,10 +23,10 @@ class ProjectConfig:
 
 
 PROJECTS: dict[str, ProjectConfig] = {
-    "umamusume": ProjectConfig(
-        key="umamusume",
+    "maniang": ProjectConfig(
+        key="maniang",
         display_name="马娘",
-        aliases=("马娘", "代号PD", "pd", "PD", "umamusume"),
+        aliases=("马娘", "代号PD", "pd", "PD", "umamusume", "maniang"),
         template_file="马娘_报价单模板.xlsx",
         history_dir="Bilibili/马娘",
         default_languages=("日翻中",),
@@ -70,6 +70,8 @@ PROJECTS: dict[str, ProjectConfig] = {
         file_prefix="报价单_BANG2",
         company="Bilibili",
         sort_order=2,
+        sheet_id="mzekJf",
+        spreadsheet_token="Wup0wnUPIiiIr2k8T23c4zASnjd",
     ),
     "zhan_shuang": ProjectConfig(
         key="zhan_shuang",

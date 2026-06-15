@@ -201,26 +201,6 @@ def process_group(client: FeishuClient, project, work_dir: Path, items: list[dic
         result = generate_quote(ROOT, request)
         print(f"  报价单已生成: {result.final_path}")
 
-        try:
-            from settlement.settlement_tracker import quick_record, add_record
-            total_billable = sum(billables)
-            price = project.prices.get(system_lang, 0.64)
-            add_record(quick_record(
-                project_key="zhan_shuang",
-                company=project.company or "库洛游戏",
-                req_name=req_name,
-                word_count=round(total_billable),
-                total_price=round(total_billable * price * 1.06, 2),
-                quote_file=result.final_path.name,
-                language=system_lang,
-                delivery_date=delivery_date.strftime("%Y-%m-%d") if delivery_date else None,
-                source="auto",
-                billable_words=round(total_billable),
-                source_chars=sum(s.all_row.source_chars or 0 for s in stats_list),
-            ))
-        except Exception:
-            pass
-
         # 读取C10作为报价页文件名
         wb = openpyxl.load_workbook(result.final_path, data_only=False)
         ws = wb[wb.sheetnames[0]]

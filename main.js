@@ -268,18 +268,30 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    if (pythonProcess) {
-      pythonProcess.kill();
-    }
+    killFlask();
   });
+}
+
+function killFlask() {
+  if (!pythonProcess) return;
+  try {
+    // Windows: taskkill /T 杀掉整个进程树（含子进程）
+    exec('taskkill /F /T /PID ' + pythonProcess.pid, () => {});
+  } catch (e) {}
+  pythonProcess = null;
 }
 
 function startFlaskServer() {
   const appDir = getAppDir();
   console.log('应用目录:', appDir);
 
-  const flaskExe = path.join(appDir, 'flask_server.exe');
-  const useExe = fs.existsSync(flaskExe);
+  // onedir 模式优先，其次 onefile
+  let flaskExe = path.join(appDir, 'flask_server', 'flask_server.exe');
+  let useExe = fs.existsSync(flaskExe);
+  if (!useExe) {
+    flaskExe = path.join(appDir, 'flask_server.exe');
+    useExe = fs.existsSync(flaskExe);
+  }
 
   if (useExe) {
     console.log('使用 flask_server.exe');
@@ -402,7 +414,5 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
-  if (pythonProcess) {
-    pythonProcess.kill();
-  }
+  killFlask();
 });

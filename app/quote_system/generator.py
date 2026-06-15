@@ -9,6 +9,107 @@ from pathlib import Path
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
+
+_MANIFEST_PATH = Path(r"D:\baojia\electron\outputs\cache\formula_cache_manifest.json")
+
+
+def _load_manifest() -> dict:
+    import json
+    try:
+        return json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_manifest(manifest: dict) -> None:
+    import json
+    _MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _ensure_formula_cached(xlsx_path: Path) -> bool:
+    """用 Excel/WPS 打开文件触发公式计算，保存缓存值后关闭。返回是否成功。"""
+    try:
+        import win32com.client
+        xl = win32com.client.Dispatch("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        try:
+            wb = xl.Workbooks.Open(str(xlsx_path))
+            wb.Save()
+            wb.Close()
+        finally:
+            xl.Quit()
+        # 记录缓存后的 mtime
+        manifest = _load_manifest()
+        manifest[str(xlsx_path)] = xlsx_path.stat().st_mtime
+        _save_manifest(manifest)
+        return True
+    except Exception:
+        return False
+
+
+def is_formula_cached(xlsx_path: Path) -> bool:
+    """检查文件是否已缓存（mtime 未变化）。"""
+    manifest = _load_manifest()
+    cached_mtime = manifest.get(str(xlsx_path))
+    if cached_mtime is None:
+        return False
+    try:
+        return xlsx_path.stat().st_mtime == cached_mtime
+    except Exception:
+        return False
+
+
+def warm_uncached_quotes(history_dir: Path, skip_keywords: list[str] | None = None) -> int:
+    """批量预热没有缓存值的报价单文件。返回处理数量。"""
+    if skip_keywords is None:
+        skip_keywords = ["账单", "结算单", "Invoice", "验收单", "订单明细", "汇总"]
+
+    def _has_cached_amount(fpath: Path) -> bool:
+        try:
+            wb = openpyxl.load_workbook(str(fpath), data_only=True)
+            ws = wb.active
+            # 战双版更：G18
+            if "战双" in fpath.name and "版更" in str(fpath.parent):
+                val = ws.cell(18, 7).value
+                wb.close()
+                return val is not None and float(val) > 0
+            # 战双发行：H52
+            if "战双" in fpath.name and "发行" in str(fpath.parent):
+                val = ws.cell(52, 8).value
+                wb.close()
+                return val is not None and float(val) > 0
+            # 标准：找合计行
+            for row in ws.iter_rows(min_row=1, max_row=ws.max_row):
+                if any(c.value and isinstance(c.value, str) and "合计" in str(c.value) for c in row):
+                    for cell in reversed(row):
+                        if cell.value is not None and isinstance(cell.value, (int, float)):
+                            wb.close()
+                            return True
+            wb.close()
+        except Exception:
+            pass
+        return False
+
+    _skip_companies = {"完美世界", "4399"}
+    count = 0
+    for f in history_dir.rglob("*.xlsx"):
+        if any(kw in f.name for kw in skip_keywords):
+            continue
+        if "已结算" in str(f):
+            continue
+        try:
+            rel = f.relative_to(history_dir)
+            if rel.parts and rel.parts[0] in _skip_companies:
+                continue
+        except Exception:
+            pass
+        if not _has_cached_amount(f):
+            if _ensure_formula_cached(f):
+                count += 1
+    return count
+
 from .memoq_html import MemoqStats, parse_memoq_html, quote_words, normalize_label
 from .projects import ProjectConfig, find_workspace_dirs
 
@@ -70,14 +171,16 @@ def generate_quote(root: Path, request: QuoteRequest) -> QuoteResult:
     wb.calculation.forceFullCalc = True
     wb.calculation.calcMode = "auto"
     wb.save(default_path)
-    
+
+    _ensure_formula_cached(default_path)
+
     if request.output_path:
         custom_path = request.output_path / final_path.name
         custom_path = avoid_overwrite(custom_path)
         custom_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(default_path, custom_path)
         return QuoteResult(output_path=default_path, stats=stats, final_path=custom_path)
-    
+
     return QuoteResult(output_path=default_path, stats=stats, final_path=default_path)
 
 
@@ -376,7 +479,7 @@ def default_output_path(history_root: Path, request: QuoteRequest, stats: list[M
         source_text = request.request_name or stats[0].source_path.stem
         request_part = extract_zhan_request_name(source_text)
         filename = f"{request.project.file_prefix} {request_part}.xlsx"
-    elif request.project.key == "umamusume":
+    elif request.project.key == "maniang":
         filename = f"报价单_《代号PD》{request.quote_date:%m%d}需求.xlsx"
     elif request.project.key == "bang2":
         filename = f"报价单_《BANG2》{request.quote_date:%m%d}需求.xlsx"
@@ -389,8 +492,6 @@ def default_output_path(history_root: Path, request: QuoteRequest, stats: list[M
         filename = f"报价_{safe_name}.xlsx"
     else:
         filename = f"{request.project.file_prefix}_{safe_name}.xlsx"
-    
-    filename = filename.replace("报价单", "报价单^")
     
     return project_dir / filename
 

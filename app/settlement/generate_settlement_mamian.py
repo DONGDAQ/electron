@@ -1,5 +1,5 @@
 """Bilibili 项目月度账单生成：从报价单历史 xlsx 读取数据 → 填充模板 → 移入已结算。
-支持马娘(umamusume)、邦邦2(bang2)、炽焰天穹(hbr)。
+支持马娘(maniang)、邦邦2(bang2)、炽焰天穹(hbr)。
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ SETTLEMENT_COMPANY = "Bilibili"
 TEMPLATE_NAME = "大连游者之家翻译账单-哔哩哔哩游戏【代号PD】-2026年4月模板.xlsx"
 
 BILL_CONFIG = {
-    "umamusume": {
+    "maniang": {
         "project": "马娘",
         "project_full_name": "优俊少女",
         "code": "代号PD",
@@ -111,7 +111,7 @@ def _read_summary_row(qs, project_key: str) -> float | None:
     return None
 
 
-def extract_quote_data(xlsx_path: Path, project_key: str = "umamusume") -> dict | None:
+def extract_quote_data(xlsx_path: Path, project_key: str = "maniang") -> dict | None:
     """从报价单 xlsx 直接读取合计行 K 列总金额和 F 列总字数。无缓存则调 Excel 重算。"""
     try:
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
@@ -188,7 +188,7 @@ def _parse_date(val) -> str | None:
     return None
 
 
-def scan_quotes(target_year: int, target_month: int, project_key: str = "umamusume"):
+def scan_quotes(target_year: int, target_month: int, project_key: str = "maniang"):
     """扫描报价单历史文件夹（仅根目录），筛选指定月份的未结算记录。"""
     cfg = _get_bill_config(project_key)
     quote_dir = get_quote_history_dir() / SETTLEMENT_COMPANY / cfg["quote_history_dir"]
@@ -223,7 +223,7 @@ def scan_quotes(target_year: int, target_month: int, project_key: str = "umamusu
     return results
 
 
-def move_settled(records: list[dict], year: int, month: int, project_key: str = "umamusume") -> Path:
+def move_settled(records: list[dict], year: int, month: int, project_key: str = "maniang") -> Path:
     """将已结算的报价单文件移入 已结算/年月/ 目录。"""
     cfg = _get_bill_config(project_key)
     qdir = get_quote_history_dir() / SETTLEMENT_COMPANY / cfg["quote_history_dir"]
@@ -240,7 +240,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bilibili 项目月度账单生成")
     parser.add_argument("--year", type=int, default=2026, help="结算年份")
     parser.add_argument("--month", type=int, required=True, help="结算月份")
-    parser.add_argument("--project", type=str, default="umamusume", help="项目: umamusume/bang2/hbr")
+    parser.add_argument("--project", type=str, default="maniang", help="项目: maniang/bang2/hbr")
     parser.add_argument("--dry-run", action="store_true", help="只预览不生成")
     args = parser.parse_args()
 
@@ -278,7 +278,7 @@ def main():
 
 
 class MamianSettlementGenerator:
-    def __init__(self, year: int, month: int, project_key: str = "umamusume"):
+    def __init__(self, year: int, month: int, project_key: str = "maniang"):
         self.year = year
         self.month = month
         self.project_key = project_key

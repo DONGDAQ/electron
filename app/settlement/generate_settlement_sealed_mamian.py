@@ -1,5 +1,5 @@
 """Bilibili 项目盖章版结算单生成：对账单确认后，生成盖章用的结算单 PDF。
-支持马娘(umamusume)、邦邦2(bang2)、炽焰天穹(hbr)。
+支持马娘(maniang)、邦邦2(bang2)、炽焰天穹(hbr)。
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ SETTLEMENT_COMPANY = "Bilibili"
 TEMPLATE_NAME = "bilibili结算单盖章用模板.docx"
 
 SEALED_CONFIG = {
-    "umamusume": {"project": "马娘", "project_full_name": "优俊少女", "code": "代号PD"},
+    "maniang": {"project": "马娘", "project_full_name": "优俊少女", "code": "代号PD"},
     "bang2": {"project": "bang2", "project_full_name": "邦邦2", "code": "邦邦2"},
     "hbr": {"project": "HBR", "project_full_name": "炽焰天穹", "code": "HBR"},
 }
@@ -114,7 +114,7 @@ def generate_sealed(
     month: int,
     total_amount: float | None = None,
     *,
-    project_key: str = "umamusume",
+    project_key: str = "maniang",
     output_dir: Path | None = None,
 ) -> Path:
     cfg = _get_sealed_config(project_key)
@@ -223,7 +223,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bilibili 项目盖章版结算单生成")
     parser.add_argument("--year", type=int, required=True, help="结算年份")
     parser.add_argument("--month", type=int, required=True, help="结算月份")
-    parser.add_argument("--project", type=str, default="umamusume", help="项目: umamusume/bang2/hbr")
+    parser.add_argument("--project", type=str, default="maniang", help="项目: maniang/bang2/hbr")
     parser.add_argument("--amount", type=float, default=None, help="结算总金额（不传自动从对账单读取）")
     args = parser.parse_args()
 

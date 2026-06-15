@@ -85,17 +85,6 @@ def _run():
         _notify_dingtalk("自动报价异常", str(e))
 
 
-def _archive_old_records():
-    try:
-        sys.path.insert(0, str(ROOT))
-        from settlement.settlement_tracker import archive_settled
-        n = archive_settled(months=3)
-        if n:
-            LOG.info(f"归档了 {n} 条已结算记录")
-    except Exception as e:
-        LOG.error(f"归档失败: {e}")
-
-
 def main():
     LOG.info("守护进程启动")
     last_run_date = None
@@ -107,12 +96,10 @@ def main():
             if now.weekday() < 5 and last_run_date != now.date():
                 if now.hour == 9 and now.minute < 5:
                     _run()
-                    _archive_old_records()
                     last_run_date = now.date()
                 elif now.hour >= 10 and now.hour < 12:
                     LOG.info(f"补执行（错过9点窗口，当前 {now.strftime('%H:%M')}）")
                     _run()
-                    _archive_old_records()
                     last_run_date = now.date()
 
             time.sleep(30)
