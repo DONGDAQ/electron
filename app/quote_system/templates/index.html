@@ -1593,7 +1593,7 @@
             } else {
               resetBtn();
               const log = data.log || '';
-              const doneMatch = log.match(/Done:\s*(\d+)\s*processed,\s*(\d+)\s*skipped,\s*(\d+)\s*failed/);
+              const doneMatch = log.match(/完成:\s*(\d+)\s*条已填写,\s*(\d+)\s*条跳过,\s*(\d+)\s*条失败/);
               const noPending = log.includes('没有找到待处理的需求') || log.includes('No rows to process');
               const hasError = log.includes('失败') || log.includes('Error') || log.includes('Failed');
               if (doneMatch) {

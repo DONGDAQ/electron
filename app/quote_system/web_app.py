@@ -44,6 +44,17 @@ LOCAL_ONLY_ENDPOINTS = {"/delete-quote", "/open-file", "/open-folder"}
 DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
 
 
+def _refresh_report_cache_async() -> None:
+    """后台刷新报告缓存"""
+    def _do():
+        try:
+            from .report_cache import sync_report_cache
+            sync_report_cache()
+        except Exception:
+            pass
+    threading.Thread(target=_do, daemon=True).start()
+
+
 def is_local_request() -> bool:
     return request.remote_addr in {"127.0.0.1", "::1", "localhost"}
 
@@ -165,6 +176,7 @@ def generate() -> Response:
             escape(display_path.name),
         ) + Markup("。") + escape(summary)
         flash(message, "success")
+        _refresh_report_cache_async()
     except Exception as exc:
         flash(str(exc), "error")
     return redirect(url_for("index", project=request.form.get("project", "")))
@@ -338,7 +350,7 @@ def report_page() -> str:
     for company, projects in projects_by_company.items():
         all_projects.extend(projects)
     selected = all_projects[0] if all_projects else None
-    return render_template("report.html", projects_by_company=projects_by_company, selected_project=selected)
+    return render_template("report.html", projects_by_company=projects_by_company, selected_project=selected, cache_bust=int(datetime.now().timestamp()))
 
 
 @app.get("/api/all-quotes")
@@ -393,31 +405,147 @@ def report_dashboard() -> Response:
     return {"status": "success", "data": data}
 
 
+REPORT_REFRESH_RUNNING = False
+
 @app.post("/api/report-dashboard/refresh")
 def report_dashboard_refresh() -> Response:
-    """手动刷新报告缓存"""
-    try:
-        from .report_cache import sync_report_cache
-        result = sync_report_cache()
-        return {"status": "success", "message": "缓存已刷新", "data": result}
-    except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+    """手动刷新报告缓存（异步）"""
+    global REPORT_REFRESH_RUNNING
+    if REPORT_REFRESH_RUNNING:
+        return jsonify({"status": "running", "message": "正在刷新中..."})
+    def _do_refresh():
+        global REPORT_REFRESH_RUNNING
+        REPORT_REFRESH_RUNNING = True
+        try:
+            from .auto_fill_tk import sync_tk_data
+            sync_tk_data()
+        except Exception:
+            pass
+        try:
+            from .report_cache import sync_report_cache
+            sync_report_cache()
+        except Exception:
+            pass
+        finally:
+            REPORT_REFRESH_RUNNING = False
+    threading.Thread(target=_do_refresh, daemon=True).start()
+    return jsonify({"status": "started", "message": "已开始刷新"})
+
+@app.get("/api/report-dashboard/refresh-status")
+def report_dashboard_refresh_status() -> Response:
+    """检查刷新状态"""
+    cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
+    sync_time = None
+    if cache_file.exists():
+        try:
+            import json as _json
+            data = _json.loads(cache_file.read_text(encoding="utf-8"))
+            sync_time = data.get("sync_time")
+        except Exception:
+            pass
+    return jsonify({
+        "running": REPORT_REFRESH_RUNNING,
+        "sync_time": sync_time,
+    })
+
+
+@app.get("/api/project-detail")
+def project_detail() -> Response:
+    """返回指定公司/项目的报价单明细"""
+    from quote_system.paths import get_quote_history_dir
+    company = request.args.get("company", "")
+    project = request.args.get("project", "")
+    if not company:
+        return jsonify({"status": "error", "message": "缺少 company 参数"}), 400
+
+    history_dir = get_quote_history_dir()
+    result = []
+
+    # 完美世界和4399从飞书读
+    _skip = {"完美世界", "4399"}
+    if company in _skip or company.startswith("完美世界"):
+        return jsonify({"status": "success", "data": []})
+
+    # 本地文件
+    for f in sorted(history_dir.rglob("*.xlsx"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            rel = f.relative_to(history_dir)
+            if any("已结算" in p for p in rel.parts):
+                continue
+            file_company = rel.parts[0] if rel.parts else ""
+            file_project = rel.parts[1] if len(rel.parts) > 1 else file_company
+            if file_company != company:
+                continue
+            if project and file_project != project:
+                continue
+            result.append({
+                "name": f.name,
+                "path": str(f),
+                "mtime": f.stat().st_mtime,
+            })
+        except Exception:
+            pass
+
+    return jsonify({"status": "success", "data": result})
 
 
 @app.get("/api/auto-quote-logs")
 def auto_quote_logs() -> Response:
-    """返回自动报价执行记录"""
+    """返回所有执行记录（自动报价 + 手动填表）"""
     import json as _json
+    logs = []
+
+    # 自动报价记录
     index_file = OUTPUTS_DIR / "logs" / "auto_quote" / "_index.json"
-    if not index_file.exists():
-        return {"status": "success", "data": []}
-    try:
-        index = _json.loads(index_file.read_text(encoding="utf-8"))
-    except Exception:
-        index = []
-    # 倒序（最新的在前）
-    index.reverse()
-    return {"status": "success", "data": index}
+    if index_file.exists():
+        try:
+            idx = _json.loads(index_file.read_text(encoding="utf-8"))
+            for e in idx:
+                e["type"] = "auto"
+            logs.extend(idx)
+        except Exception:
+            pass
+
+    # TK 填表记录
+    tk_log = OUTPUTS_DIR / "logs" / "tk_fill.log"
+    if tk_log.exists():
+        try:
+            content = tk_log.read_text(encoding="utf-8", errors="replace")
+            mtime = datetime.fromtimestamp(tk_log.stat().st_mtime)
+            done_match = None
+            for line in content.splitlines():
+                if line.startswith("Done:"):
+                    done_match = line
+            logs.append({
+                "project": "tk",
+                "timestamp": mtime.isoformat(),
+                "status": "success" if done_match else "error",
+                "log_file": str(tk_log),
+                "summary": done_match or content.strip()[-200:] if content.strip() else "无输出",
+                "type": "manual",
+            })
+        except Exception:
+            pass
+
+    # 4399 填表记录
+    fill_4399_log = OUTPUTS_DIR / "logs" / "4399_fill.log"
+    if fill_4399_log.exists():
+        try:
+            content = fill_4399_log.read_text(encoding="utf-8", errors="replace")
+            mtime = datetime.fromtimestamp(fill_4399_log.stat().st_mtime)
+            logs.append({
+                "project": "4399",
+                "timestamp": mtime.isoformat(),
+                "status": "success",
+                "log_file": str(fill_4399_log),
+                "summary": content.strip()[-200:] if content.strip() else "无输出",
+                "type": "manual",
+            })
+        except Exception:
+            pass
+
+    logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return {"status": "success", "data": logs}
 
 
 @app.get("/api/auto-quote-log-content")
@@ -605,6 +733,7 @@ def diezhi_generate_quote() -> Response:
                 service_type=service_type,
             )
             output = buffer.getvalue()
+            _refresh_report_cache_async()
 
             return jsonify({
                 "status": "success",
@@ -1098,6 +1227,7 @@ def mamian_generate_sealed() -> Response:
     sealed_amount = _read_total_from_bill(output_dir, year, month, sealed_cfg["code"])
     invoice_text = _generate_invoice_text(sealed_amount)
     _save_invoice_request(year, month, project_key, invoice_text)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1178,6 +1308,7 @@ def settlement_generate() -> Response:
 
     excel_path = generate_settlement_excel(records, year, month, output_dir)
     docx_path = generate_acceptance_docx(records, year, month, output_dir)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1210,6 +1341,7 @@ def settlement_yh_games_generate() -> Response:
 
     excel_path = generate_yh_games_excel(records, year, month, output_dir)
     docx_path = generate_yh_games_docx(records, year, month, output_dir)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1242,6 +1374,7 @@ def settlement_yh_publish_generate() -> Response:
 
     excel_path = generate_yh_publish_excel(records, year, month, output_dir)
     docx_path = generate_yh_publish_docx(records, year, month, output_dir)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1415,6 +1548,7 @@ def settlement_zhan_shuang_generate() -> Response:
     quote_dir = get_quote_history_dir() / "库洛游戏" / "战双版更"
     _move_settled_quotes(quote_dir, [r['file_name'] for r in records if r.get('file_name')], year, month)
     _update_zs_status(records)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1530,6 +1664,7 @@ def settlement_zhan_shuang_faxing_generate() -> Response:
         print(f"已移动报价单到: {settled_dir / target_quote.name}")
 
     _update_zs_status(records)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1683,6 +1818,8 @@ def settlement_4399_generate() -> Response:
         else:
             table2.append({"name": proj_name, "usd_amount": info["usd_amount"]})
 
+    _refresh_report_cache_async()
+
     return jsonify({
         "status": "success",
         "message": f"已生成 {len(files)} 个项目的结算文件",
@@ -1736,6 +1873,7 @@ def settlement_diezhi_generate() -> Response:
             })
 
     total_amount = round(sum(info['amount'] for info in results.values()), 2)
+    _refresh_report_cache_async()
     return jsonify({
         "status": "success",
         "message": f"已生成 {len(files)} 个项目结算单",
@@ -1790,6 +1928,7 @@ def tk_generate_settlement() -> Response:
 
     settlement_path = generate_settlement_pdf(year, month)
     invoice_path = generate_invoice_pdf(year, month)
+    _refresh_report_cache_async()
 
     return jsonify({
         "status": "success",
@@ -1814,6 +1953,7 @@ def settlement_zulong_generate() -> Response:
         return jsonify({"status": "error", "message": "至少需要填写一个项目的件数"}), 400
 
     files = generate_zulong_settlement(year, month, {"yishan": yishan, "longzu": longzu})
+    _refresh_report_cache_async()
     return jsonify({"status": "success", "files": files})
 # ======================== 结算文件列表 ========================
 
@@ -2505,6 +2645,7 @@ def settlement_workbench_generate() -> Response:
             import traceback
             results[key] = {"status": "error", "message": f"{type(e).__name__}: {str(e)}"}
 
+    _refresh_report_cache_async()
     return jsonify({"status": "success", "results": results, "year": year, "month": month})
 # ======================== 结算文件树 ========================
 

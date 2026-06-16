@@ -3,10 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>报价报告 - 翻译报价系统</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ range(10000)|random }}">
-  <script src="{{ url_for('static', filename='lucide.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ cache_bust }}">
+  <script src="{{ url_for('static', filename='lucide.min.js') }}?v={{ cache_bust }}"></script>
+  <script src="{{ url_for('static', filename='common.js') }}?v={{ cache_bust }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
   <style>
     .report-layout { display:flex; flex-direction:column; height:100%; }
     .report-toolbar { display:flex; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
@@ -36,11 +41,8 @@
     .company-chip .cc-amount { color:#f59e0b; font-weight:500; }
     .company-chip:hover { border-color:var(--accent); background:var(--accent-soft); }
 
+
     /* 趋势图区域 */
-    .dashboard-trend { padding:0 24px 12px; background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0; }
-    .dashboard-trend-header { display:flex; align-items:center; gap:8px; padding:8px 0; }
-    .dashboard-trend-header span { font-size:12px; color:var(--muted); font-weight:500; }
-    .trend-chart { width:100%; height:80px; }
 
     /* 报价单视图切换 */
     .view-toggle { display:flex; gap:2px; background:var(--bg); border-radius:6px; padding:2px; }
@@ -112,7 +114,7 @@
     .log-list { display:grid; gap:6px; }
     .log-item { border:1px solid var(--line); border-radius:8px; overflow:hidden; transition:border-color .12s; }
     .log-item:hover { border-color:#94a3b8; }
-    .log-item.log-error { border-left:3px solid #ef4444; }
+    .log-item.log-error { border-left:3px solid #ef4444; background:rgba(239,68,68,0.08); }
     .log-item.log-success { border-left:3px solid #10b981; }
     .log-header { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; user-select:none; }
     .log-header .log-status { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -216,6 +218,11 @@
         <div class="report-toolbar">
           <h2>报价报告</h2>
           <div class="report-toolbar-right">
+            <span style="font-size:11px;color:var(--muted);opacity:0.6;">飞书+本地文件</span>
+            <span id="cacheTime" style="font-size:11px;color:var(--muted);"></span>
+            <button class="icon-button" id="refreshBtn" title="刷新数据">
+              <i data-lucide="refresh-cw"></i>
+            </button>
             <button class="icon-button" onclick="toggleTheme()" title="切换主题">
               <i data-lucide="moon" id="themeIcon"></i>
             </button>
@@ -229,11 +236,7 @@
             <div class="dc-value warn" id="dcUnsettled">-</div>
             <div class="dc-sub" id="dcUnsettledAmount"></div>
           </div>
-          <div class="dashboard-card">
-            <div class="dc-label"><i data-lucide="file-spreadsheet"></i> 本月报价单</div>
-            <div class="dc-value" id="dcFileCount">-</div>
-          </div>
-          <div class="dashboard-card">
+          <div class="dashboard-card" style="cursor:pointer;" onclick="showMonthDetail()">
             <div class="dc-label"><i data-lucide="banknote"></i> 本月总额</div>
             <div class="dc-value good" id="dcMonthAmount">-</div>
           </div>
@@ -243,20 +246,20 @@
           </div>
         </div>
 
-        <!-- 趋势图 -->
-        <div class="dashboard-trend" id="dashboardTrend" style="display:none;">
-          <div class="dashboard-trend-header">
-            <span>近30天报价金额趋势</span>
-          </div>
-          <svg id="trendChart" class="trend-chart" viewBox="0 0 800 80" preserveAspectRatio="none"></svg>
-        </div>
 
         <!-- 公司维度汇总 -->
         <div class="company-summary-bar" id="companySummaryBar" style="display:none;"></div>
 
+        <!-- 待结算金额柱状图 -->
+        <div id="amountChart" style="display:none;padding:16px 24px 12px;background:var(--panel);border-bottom:1px solid var(--line);">
+          <div style="height:auto;position:relative;">
+            <canvas id="amountChartCanvas"></canvas>
+          </div>
+        </div>
+
         <!-- 公司详情 -->
-        <div id="companyDetail" style="display:none;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel);">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div id="companyDetail" style="display:none;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel);max-height:60vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;position:sticky;top:0;background:var(--panel);z-index:1;padding:4px 0;">
             <button class="icon-button" onclick="closeCompanyDetail()" title="返回"><i data-lucide="arrow-left"></i></button>
             <h3 id="detailCompanyName" style="margin:0;font-size:16px;font-weight:600;"></h3>
             <span id="detailCompanySummary" style="font-size:12px;color:var(--muted);"></span>
@@ -293,16 +296,33 @@
     (function(){ var ic=document.getElementById('themeIcon'); if(ic) ic.setAttribute('data-lucide', document.body.classList.contains('light-theme')?'sun':'moon'); lucide.createIcons(); })();
 
     let dashboardData = null;
+    let allLogData = null;
     let selectedCompany = null;
 
+    const LOG_LABELS = {
+      huanta: '幻塔', yihuan_nei: '异环游戏内', yihuan_faxing: '异环发行',
+      zhan_shuang: '战双邮件', zhan_shuang_feishu: '战双飞书', bang2: 'BANG2',
+      tk: 'TK填表', '4399': '4399 填表',
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
+      const refreshBtn = document.getElementById('refreshBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', refreshDashboard);
       loadReportData();
     });
 
     function loadReportData() {
-      fetch('/api/report-dashboard').then(r => r.json()).then(dashRes => {
-        if (dashRes.status === 'success') dashboardData = dashRes.data || {};
+      Promise.all([
+        fetch('/api/report-dashboard').then(r => r.json()),
+        fetch('/api/auto-quote-logs').then(r => r.json()),
+      ]).then(([dashRes, logRes]) => {
+        if (dashRes.status === 'success') {
+          dashboardData = dashRes.data || {};
+          updateCacheTime(dashboardData.sync_time);
+        }
+        if (logRes.status === 'success') allLogData = logRes.data || [];
         renderDashboard();
+        renderLogView();
       }).catch(err => {
         document.getElementById('reportBody').innerHTML =
           '<div class="report-empty"><i data-lucide="alert-circle"></i><p>加载失败: ' + err.message + '</p></div>';
@@ -310,21 +330,76 @@
       });
     }
 
+    function updateCacheTime(syncTime) {
+      const el = document.getElementById('cacheTime');
+      if (!el || !syncTime) return;
+      try {
+        const d = new Date(syncTime);
+        const pad = n => String(n).padStart(2, '0');
+        el.textContent = '更新: ' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      } catch(e) {}
+    }
+
+    function refreshDashboard() {
+      const btn = document.getElementById('refreshBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="loading"></i>';
+        lucide.createIcons();
+      }
+      fetch('/api/report-dashboard/refresh', {method: 'POST'}).then(r => r.json()).then(data => {
+        if (data.status === 'started' || data.status === 'running') {
+          pollRefreshStatus();
+        } else {
+          resetRefreshBtn();
+        }
+      }).catch(() => resetRefreshBtn());
+    }
+
+    function resetRefreshBtn() {
+      const btn = document.getElementById('refreshBtn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="refresh-cw"></i>';
+        lucide.createIcons();
+      }
+    }
+
+    function pollRefreshStatus() {
+      fetch('/api/report-dashboard/refresh-status').then(r => r.json()).then(data => {
+        if (data.running) {
+          setTimeout(pollRefreshStatus, 2000);
+        } else {
+          resetRefreshBtn();
+          updateCacheTime(data.sync_time);
+          // 刷新仪表盘 + 执行记录
+          Promise.all([
+            fetch('/api/report-dashboard').then(r => r.json()),
+            fetch('/api/auto-quote-logs').then(r => r.json()),
+          ]).then(([dashRes, logRes]) => {
+            if (dashRes.status === 'success') {
+              dashboardData = dashRes.data || {};
+            }
+            if (logRes.status === 'success') allLogData = logRes.data || [];
+            renderDashboard();
+            renderLogView();
+          });
+        }
+      }).catch(() => resetRefreshBtn());
+    }
+
     // ========== Dashboard ==========
     function renderDashboard() {
       if (!dashboardData) return;
       const bar = document.getElementById('dashboardBar');
-      const trend = document.getElementById('dashboardTrend');
       bar.style.display = 'flex';
-      trend.style.display = 'block';
+      document.getElementById('reportBody').innerHTML = '';
 
-      document.getElementById('dcFileCount').textContent = dashboardData.month_file_count + ' 份';
       document.getElementById('dcMonthAmount').textContent = '\u00a5' + Math.round(dashboardData.month_total_amount).toLocaleString();
       document.getElementById('dcUnsettled').textContent = dashboardData.unsettled_count + ' 份';
       document.getElementById('dcUnsettledAmount').textContent = '\u00a5' + Math.round(dashboardData.unsettled_amount).toLocaleString();
       document.getElementById('dcTodayRuns').textContent = dashboardData.today_runs + ' 次';
 
-      renderTrendChart(dashboardData.trend || []);
 
       // company summary
       const cs = dashboardData.company_summary || {};
@@ -342,29 +417,155 @@
       } else {
         compBar.style.display = 'none';
       }
+
+      // 柱状图
+      renderAmountChart(cs);
     }
 
-    function renderTrendChart(trend) {
-      const svg = document.getElementById('trendChart');
-      if (!trend.length) { svg.innerHTML = ''; return; }
-      const amounts = trend.map(t => t.amount);
-      const maxAmt = Math.max(...amounts, 1);
-      const w = 800, h = 80, pad = 2;
+    let amountChartInstance = null;
+    function renderAmountChart(cs) {
+      const chartDiv = document.getElementById('amountChart');
+      if (!cs || Object.keys(cs).length === 0) {
+        chartDiv.style.display = 'none';
+        return;
+      }
+      chartDiv.style.display = 'block';
 
-      const points = trend.map((t, i) => ({
-        x: pad + (i / Math.max(trend.length - 1, 1)) * (w - 2 * pad),
-        y: h - pad - (t.amount / maxAmt) * (h - 2 * pad)
-      }));
+      const projects = [];
+      for (const [company, info] of Object.entries(cs)) {
+        for (const [proj, pdata] of Object.entries(info.projects || {})) {
+          projects.push({ name: proj, amount: pdata.amount || 0, company: company });
+        }
+      }
+      projects.sort((a, b) => b.amount - a.amount);
 
-      let pathD = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('');
-      let areaD = pathD + ' L' + points[points.length-1].x.toFixed(1) + ' ' + h + ' L' + points[0].x.toFixed(1) + ' ' + h + ' Z';
+      const labels = projects.map(p => p.name);
+      const data = projects.map(p => Math.round(p.amount));
+      const canvas = document.getElementById('amountChartCanvas');
+      const ctx = canvas.getContext('2d');
 
-      svg.innerHTML = '<defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">'
-        + '<stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>'
-        + '<stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>'
-        + '</linearGradient></defs>'
-        + '<path d="' + areaD + '" fill="url(#trendGrad)"/>'
-        + '<path d="' + pathD + '" fill="none" stroke="#3b82f6" stroke-width="1.5" vector-effect="non-scaling-stroke"/>';
+      const colors = [
+        '#667eea', '#f093fb', '#4facfe', '#43e97b',
+        '#fa709a', '#a18cd1', '#fccb90', '#e0c3fc',
+        '#764ba2', '#f5576c', '#00f2fe', '#38f9d7',
+      ];
+
+      if (amountChartInstance) amountChartInstance.destroy();
+      document.getElementById('amountChartCanvas').parentElement.style.height = '260px';
+      amountChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: colors.slice(0, data.length),
+            borderRadius: 6,
+            borderSkipped: false,
+            barPercentage: 0.7,
+          }]
+        },
+        plugins: [ChartDataLabels],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: {
+            padding: { top: 24 }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false },
+            datalabels: {
+              anchor: 'end',
+              align: 'top',
+              color: '#e2e8f0',
+              font: { size: 11, weight: '600' },
+              formatter: v => '¥' + v.toLocaleString(),
+              offset: 4,
+            }
+          },
+          scales: {
+            y: {
+              display: false,
+              beginAtZero: true,
+            },
+            x: {
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 11 },
+                maxRotation: 45,
+              },
+              grid: { display: false }
+            }
+          },
+          animation: {
+            duration: 800,
+            easing: 'easeOutQuart'
+          }
+        }
+      });
+    }
+
+
+
+    // ========== 执行记录 ==========
+    function renderLogView() {
+      if (!allLogData || allLogData.length === 0) return;
+      // 只显示最近7天
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const data = allLogData.filter(l => (l.timestamp || '').slice(0, 10) >= cutoffStr);
+      if (data.length === 0) return;
+
+      const body = document.getElementById('reportBody');
+      let html = '<div style="padding:16px 0;"><h3 style="font-size:14px;font-weight:600;margin:0 0 12px;color:var(--muted);">最近 7 天执行记录</h3>';
+      html += '<div class="log-list">';
+      data.forEach(log => {
+        const dt = new Date(log.timestamp);
+        const pad = n => String(n).padStart(2, '0');
+        const timeStr = (dt.getMonth()+1) + '-' + pad(dt.getDate()) + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+        const proj = LOG_LABELS[log.project] || log.project;
+        const isErr = log.status === 'error';
+        const isAuto = log.type === 'auto';
+        const typeTag = isAuto
+          ? '<span style="font-size:11px;padding:1px 6px;border-radius:4px;background:#10b98120;color:#34d399;margin-left:4px;">自动</span>'
+          : '<span style="font-size:11px;padding:1px 6px;border-radius:4px;background:#3b82f620;color:#60a5fa;margin-left:4px;">手动</span>';
+        html += '<div class="log-item ' + (isErr ? 'log-error' : 'log-success') + '">'
+          + '<div class="log-header" onclick="toggleLog(this)" style="cursor:pointer;">'
+          + '<span class="log-status ' + (isErr ? 'error' : 'success') + '"></span>'
+          + '<span class="log-project">' + escHtml(proj) + typeTag + '</span>'
+          + '<span class="log-time">' + timeStr + '</span>'
+          + '<span class="log-status-text ' + (isErr ? 'fail' : 'ok') + '">' + (isErr ? '失败' : '成功') + '</span>'
+          + '<span class="log-summary">' + escHtml(log.summary || '') + '</span>'
+          + '<span class="log-toggle">展开</span>'
+          + '</div>'
+          + '<div class="log-body" data-path="' + encodeURIComponent(log.log_file) + '">'
+          + '<pre>加载中...</pre>'
+          + '</div></div>';
+      });
+      html += '</div></div>';
+      body.innerHTML += html;
+      lucide.createIcons();
+    }
+
+    function toggleLog(header) {
+      const body = header.nextElementSibling;
+      const toggle = header.querySelector('.log-toggle');
+      if (body.classList.contains('open')) {
+        body.classList.remove('open');
+        toggle.textContent = '展开';
+        return;
+      }
+      body.classList.add('open');
+      toggle.textContent = '收起';
+      const pre = body.querySelector('pre');
+      if (pre && pre.textContent === '加载中...') {
+        const path = decodeURIComponent(body.dataset.path);
+        fetch('/api/auto-quote-log-content?path=' + encodeURIComponent(path))
+          .then(r => r.json())
+          .then(d => { pre.textContent = d.status === 'success' ? d.content : '加载失败: ' + d.message; })
+          .catch(e => pre.textContent = '加载失败: ' + e.message);
+      }
     }
 
 
@@ -377,7 +578,7 @@
 
       selectedCompany = companyName;
       document.getElementById('companySummaryBar').style.display = 'none';
-      document.getElementById('dashboardTrend').style.display = 'none';
+      document.getElementById('amountChart').style.display = 'none';
 
       const detail = document.getElementById('companyDetail');
       detail.style.display = 'block';
@@ -385,13 +586,16 @@
       document.getElementById('detailCompanySummary').textContent = info.count + ' 份 | ¥' + Math.round(info.amount).toLocaleString();
 
       const projects = info.projects || {};
-      const projEntries = Object.entries(projects).sort((a, b) => b[1] - a[1]);
+      const projEntries = Object.entries(projects).sort((a, b) => (b[1].amount || 0) - (a[1].amount || 0));
       const listDiv = document.getElementById('detailProjectList');
       listDiv.innerHTML = '<table class="records-table" style="max-width:600px;">'
-        + '<thead><tr><th>项目</th><th style="text-align:right;">数量</th></tr></thead>'
+        + '<thead><tr><th>项目</th><th style="text-align:right;">数量</th><th style="text-align:right;">金额</th></tr></thead>'
         + '<tbody>'
-        + projEntries.map(([name, count]) =>
-          '<tr><td>' + escHtml(name) + '</td><td style="text-align:right;">' + count + ' 份</td></tr>'
+        + projEntries.map(([name, data]) =>
+          '<tr style="cursor:pointer;" onclick="showProjectFiles(\'' + escHtml(companyName).replace(/'/g, "\\'") + '\',\'' + escHtml(name).replace(/'/g, "\\'") + '\')">'
+          + '<td>' + escHtml(name) + ' <i data-lucide="chevron-right" style="width:14px;height:14px;vertical-align:middle;opacity:0.4;"></i></td>'
+          + '<td style="text-align:right;">' + (data.count || data) + ' 份</td>'
+          + '<td style="text-align:right;">¥' + Math.round(data.amount || 0).toLocaleString() + '</td></tr>'
         ).join('')
         + '</tbody></table>';
       lucide.createIcons();
@@ -401,7 +605,84 @@
       selectedCompany = null;
       document.getElementById('companyDetail').style.display = 'none';
       document.getElementById('companySummaryBar').style.display = 'flex';
-      document.getElementById('dashboardTrend').style.display = 'block';
+      document.getElementById('amountChart').style.display = 'block';
+    }
+
+    function showMonthDetail() {
+      if (!dashboardData) return;
+      const cs = dashboardData.company_summary || {};
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+
+      const items = [];
+      for (const [company, info] of Object.entries(cs)) {
+        for (const [proj, pdata] of Object.entries(info.projects || {})) {
+          for (const item of (pdata.items || [])) {
+            if (!item.date || item.date === '未识别') continue;
+            const [m, d] = item.date.split('/');
+            const delivDate = new Date(today.getFullYear(), parseInt(m) - 1, parseInt(d));
+            if (delivDate >= lastMonthStart && delivDate < nextMonthStart) {
+              items.push({ ...item, company, project: proj });
+            }
+          }
+        }
+      }
+      items.sort((a, b) => b.amount - a.amount);
+
+      document.getElementById('companySummaryBar').style.display = 'none';
+      document.getElementById('amountChart').style.display = 'none';
+      const detail = document.getElementById('companyDetail');
+      detail.style.display = 'block';
+      document.getElementById('detailCompanyName').textContent = '本月待结算明细';
+      document.getElementById('detailCompanySummary').textContent = items.length + ' 条 | ¥' + Math.round(items.reduce((s, i) => s + i.amount, 0)).toLocaleString();
+
+      let html = '<div style="margin-bottom:8px;"><button class="icon-button" onclick="closeCompanyDetail()" title="返回"><i data-lucide="arrow-left"></i></button></div>';
+      html += '<table class="records-table" style="max-width:800px;">'
+        + '<thead><tr><th>公司</th><th>项目</th><th>需求</th><th>交付日期</th><th style="text-align:right;">金额</th></tr></thead><tbody>';
+      items.forEach(item => {
+        html += '<tr><td>' + escHtml(item.company) + '</td><td>' + escHtml(item.project) + '</td><td>'
+          + escHtml(item.name) + '</td><td style="white-space:nowrap;">' + escHtml(item.date)
+          + '</td><td style="text-align:right;">¥' + Math.round(item.amount).toLocaleString() + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('detailProjectList').innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function showProjectFiles(companyName, projectName) {
+      if (!dashboardData) return;
+      const cs = dashboardData.company_summary || {};
+      const info = cs[companyName];
+      if (!info) return;
+      const proj = info.projects[projectName];
+      if (!proj) return;
+
+      const items = proj.items || [];
+      const listDiv = document.getElementById('detailProjectList');
+      let html = '<div style="margin-bottom:8px;">'
+        + '<button class="icon-button" onclick="showCompanyDetail(\'' + escHtml(companyName).replace(/'/g, "\\'") + '\')" title="返回" style="margin-right:8px;"><i data-lucide="arrow-left"></i></button>'
+        + '<span style="font-weight:600;">' + escHtml(projectName) + '</span>'
+        + '<span style="font-size:12px;color:var(--muted);margin-left:8px;">' + items.length + ' 条 | ¥' + Math.round(proj.amount).toLocaleString() + '</span>'
+        + '</div>';
+      if (items.length === 0) {
+        html += '<div style="padding:20px;text-align:center;color:var(--muted);">暂无明细数据</div>';
+      } else {
+        const isTK = projectName === 'TK';
+        const amountHeader = isTK ? '<th style="text-align:right;">美元</th><th style="text-align:right;">人民币</th>' : '<th style="text-align:right;">金额</th>';
+        html += '<table class="records-table" style="max-width:700px;">'
+          + '<thead><tr><th>需求</th><th>交付日期</th>' + amountHeader + '</tr></thead><tbody>';
+        items.forEach(item => {
+          const amountCol = isTK
+            ? '<td style="text-align:right;">$' + (item.usd || 0).toFixed(2) + '</td><td style="text-align:right;">¥' + Math.round(item.amount).toLocaleString() + '</td>'
+            : '<td style="text-align:right;">¥' + Math.round(item.amount).toLocaleString() + '</td>';
+          html += '<tr><td>' + escHtml(item.name) + '</td><td style="white-space:nowrap;">' + escHtml(item.date || '') + '</td>' + amountCol + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      listDiv.innerHTML = html;
+      lucide.createIcons();
     }
 
     function fmtDateTime(d) {

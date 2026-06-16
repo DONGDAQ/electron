@@ -233,7 +233,7 @@ function createWindow() {
   startFlaskServer();
   waitForFlask(() => {
     if (mainWindow) {
-      mainWindow.loadURL('http://127.0.0.1:5000');
+      mainWindow.loadURL('http://127.0.0.1:5000/report');
       mainWindow.show();
     }
   });

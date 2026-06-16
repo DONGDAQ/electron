@@ -147,6 +147,9 @@ def run(args: argparse.Namespace) -> None:
 
             # 纯文本非"同上" → 跳过
             else:
+                # 忽略"提前翻译"等特殊标记
+                if "提前翻译" in candidate['n_text'] or "无需统计" in candidate['n_text']:
+                    continue
                 print(f"  N column non-attachment, non-same-as-above: {candidate['n_text'][:50]}, skipping.")
                 skipped += 1
                 continue
@@ -164,7 +167,7 @@ def run(args: argparse.Namespace) -> None:
             failed += 1
             print(f"  Failed: {exc}")
 
-    print(f"\nDone: {processed} processed, {skipped} skipped, {failed} failed.")
+    print(f"\n完成: {processed} 条已填写, {skipped} 条跳过, {failed} 条失败.")
 
 
 # ---- Sheet Read via lark-cli ----

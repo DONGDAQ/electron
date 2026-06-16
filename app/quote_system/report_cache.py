@@ -34,6 +34,85 @@ def _win32com_refresh(fpath: Path):
                 pass
 
 
+def _read_delivery_date(fpath: Path) -> str:
+    """从报价单读取交付日期，返回 MM/DD 格式。"""
+    try:
+        wb = openpyxl.load_workbook(str(fpath), data_only=True)
+        ws = wb.active
+        val = None
+        # 战双发行：双月最后一天
+        if "战双" in fpath.name and "发行" in str(fpath.parent):
+            wb.close()
+            name = fpath.name
+            if "4＆5" in name or "4&5" in name:
+                return "05/31"
+            elif "6＆7" in name or "6&7" in name:
+                return "07/31"
+            else:
+                return ""
+        # 战双版更：F20 格式 "YYYY/MM/DD"
+        if "战双" in fpath.name:
+            # 特殊处理旧模板文件
+            if "v4.6" in fpath.name and "翻译委托2" in fpath.name:
+                wb.close()
+                return "06/10"
+            if "v4.6" in fpath.name and "翻译委托3" in fpath.name:
+                wb.close()
+                return "06/15"
+            val = ws.cell(20, 6).value
+            if val and isinstance(val, str) and "/" in str(val):
+                parts = str(val).split("/")
+                if len(parts) >= 2:
+                    wb.close()
+                    return f"{int(parts[1]):02d}/{int(parts[2]):02d}" if len(parts) >= 3 else f"{int(parts[0]):02d}/{int(parts[1]):02d}"
+        # bang2：C25
+        if "BANG2" in fpath.name or "bang2" in fpath.name.lower():
+            val = ws.cell(25, 3).value
+        # 幻塔：C15 格式 "交付时间  YYYY-MM-DD"
+        elif "幻塔" in fpath.name or "HT_" in fpath.name:
+            val = ws.cell(15, 3).value
+            if val and isinstance(val, str) and "交付" in str(val):
+                import re
+                m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', str(val))
+                if m:
+                    wb.close()
+                    return f"{int(m.group(2)):02d}/{int(m.group(3)):02d}"
+        # ニキ新作：E51
+        elif "ニキ新作" in str(fpath):
+            val = ws.cell(51, 5).value
+        # 恋与深空：E39
+        elif "恋与深空" in str(fpath):
+            val = ws.cell(39, 5).value
+        # 闪暖：E49
+        elif "闪暖" in str(fpath):
+            val = ws.cell(49, 5).value
+        # 标准：C19
+        else:
+            val = ws.cell(19, 3).value
+        wb.close()
+        if val is None:
+            return ""
+        if isinstance(val, datetime):
+            return f"{val.month:02d}/{val.day:02d}"
+        if isinstance(val, (int, float)):
+            # Excel 日期序列号
+            base = datetime(1899, 12, 30)
+            d = base + timedelta(days=int(val))
+            return f"{d.month:02d}/{d.day:02d}"
+        # 字符串格式如 "6/4" 或 "6/12"
+        s = str(val).strip()
+        if "/" in s:
+            parts = s.split("/")
+            if len(parts) == 2:
+                try:
+                    return f"{int(parts[0]):02d}/{int(parts[1]):02d}"
+                except ValueError:
+                    pass
+        return s[:5]
+    except Exception:
+        return ""
+
+
 def _read_quote_amount(fpath: Path) -> float:
     from quote_system.generator import is_formula_cached
     cached = is_formula_cached(fpath)
@@ -223,7 +302,8 @@ def sync_report_cache() -> dict:
                     continue
                 mtime_date = date.fromtimestamp(f.stat().st_mtime)
                 amount = _read_quote_amount(f)
-                file_meta.append((rel.parts, mtime_date, amount))
+                deliv = _read_delivery_date(f)
+                file_meta.append((rel.parts, mtime_date, amount, deliv))
             except Exception:
                 pass
 
@@ -234,23 +314,44 @@ def sync_report_cache() -> dict:
     trend = defaultdict(float)
     company_summary = defaultdict(lambda: {"amount": 0.0, "count": 0, "projects": {}})
 
-    for parts, mtime_date, amount in file_meta:
+    for parts, mtime_date, amount, deliv in file_meta:
+        if amount <= 0:
+            continue
         if mtime_date >= month_start:
             month_file_count += 1
         company = parts[0] if parts else "未知"
         unsettled_count += 1
         unsettled_amount += amount
-        # 本地文件用修改日期近似交付日期
-        if mtime_date >= last_month_start:
-            month_total_amount += amount
+        # 用交付日期判断是否计入本月总额（上月+本月）
+        if deliv:
+            try:
+                m, d = deliv.split("/")
+                deliv_date = date(today.year, int(m), int(d))
+                # 下月1号
+                if month_start.month == 12:
+                    next_month_start = date(month_start.year + 1, 1, 1)
+                else:
+                    next_month_start = date(month_start.year, month_start.month + 1, 1)
+                if last_month_start <= deliv_date < next_month_start:
+                    month_total_amount += amount
+            except (ValueError, AttributeError):
+                pass
         if (today - mtime_date).days <= 30:
             trend[mtime_date.strftime("%Y-%m-%d")] += amount
         project = parts[1] if len(parts) > 1 else company
         company_summary[company]["amount"] += amount
         company_summary[company]["count"] += 1
         if project not in company_summary[company]["projects"]:
-            company_summary[company]["projects"][project] = 0
-        company_summary[company]["projects"][project] += 1
+            company_summary[company]["projects"][project] = {"count": 0, "amount": 0.0, "items": []}
+        company_summary[company]["projects"][project]["count"] += 1
+        company_summary[company]["projects"][project]["amount"] += amount
+        # 需求名：去掉扩展名
+        req_name = parts[-1].replace(".xlsx", "") if parts else ""
+        company_summary[company]["projects"][project]["items"].append({
+            "name": req_name,
+            "amount": round(amount, 2),
+            "date": deliv if deliv else "未识别",
+        })
 
     trend_list = []
     for i in range(29, -1, -1):
@@ -282,8 +383,31 @@ def sync_report_cache() -> dict:
             company_summary["Bilibili"]["amount"] += tk_amount_cny
             company_summary["Bilibili"]["count"] += tk_count
             if "TK" not in company_summary["Bilibili"]["projects"]:
-                company_summary["Bilibili"]["projects"]["TK"] = 0
-            company_summary["Bilibili"]["projects"]["TK"] += tk_count
+                company_summary["Bilibili"]["projects"]["TK"] = {"count": 0, "amount": 0.0, "items": []}
+            company_summary["Bilibili"]["projects"]["TK"]["count"] += tk_count
+            company_summary["Bilibili"]["projects"]["TK"]["amount"] += tk_amount_cny
+            for e in tk_data.get("unsettled", []):
+                usd = round(e.get("amount", 0), 2)
+                if usd <= 0:
+                    continue
+                # 转换 "6月8日" 为 "06/08"
+                deliv_str = e.get("deliv", "")
+                deliv_fmt = ""
+                if "月" in deliv_str and "日" in deliv_str:
+                    try:
+                        m = int(deliv_str.split("月")[0])
+                        d = int(deliv_str.split("月")[1].replace("日", ""))
+                        deliv_fmt = f"{m:02d}/{d:02d}"
+                    except (ValueError, IndexError):
+                        deliv_fmt = deliv_str
+                else:
+                    deliv_fmt = deliv_str
+                company_summary["Bilibili"]["projects"]["TK"]["items"].append({
+                    "name": e.get("req_name", ""),
+                    "amount": round(usd * tk_rate, 2),
+                    "usd": usd,
+                    "date": deliv_fmt,
+                })
     except Exception:
         pass
 
@@ -299,6 +423,7 @@ def sync_report_cache() -> dict:
             data = client.read_sheet(profile.sheet_id, 'A1:O')
             proj_count = 0
             proj_amount = 0
+            proj_items = []
             for i, row in enumerate(data):
                 if i == 0:
                     continue
@@ -315,12 +440,16 @@ def sync_report_cache() -> dict:
                 j = str(row[9] or '').strip() if len(row) > 9 else ''
                 if j == '已请款':
                     continue
-                proj_count += 1
                 try:
                     amt = float(row[8]) if len(row) > 8 and row[8] is not None else 0
                 except (ValueError, TypeError):
                     amt = 0
+                if amt <= 0:
+                    continue
+                proj_count += 1
                 proj_amount += amt
+                req_name = str(row[3] or '')[:40] if len(row) > 3 else ''
+                proj_items.append({"name": req_name, "amount": round(amt, 2), "date": deliv.strftime("%m/%d")})
                 # 交付日期在本月之前的计入本月总额
                 if deliv.date() >= month_start or deliv.date() >= last_month_start:
                     month_total_amount += amt
@@ -329,8 +458,10 @@ def sync_report_cache() -> dict:
                 company_summary[label]["amount"] += proj_amount
                 company_summary[label]["count"] += proj_count
                 if pw_name not in company_summary[label]["projects"]:
-                    company_summary[label]["projects"][pw_name] = 0
-                company_summary[label]["projects"][pw_name] += proj_count
+                    company_summary[label]["projects"][pw_name] = {"count": 0, "amount": 0.0, "items": []}
+                company_summary[label]["projects"][pw_name]["count"] += proj_count
+                company_summary[label]["projects"][pw_name]["amount"] += proj_amount
+                company_summary[label]["projects"][pw_name]["items"].extend(proj_items)
             unsettled_count += proj_count
             unsettled_amount += proj_amount
     except Exception:
@@ -346,6 +477,7 @@ def sync_report_cache() -> dict:
         base4 = datetime(1899, 12, 30)
         count_4399 = 0
         amount_4399 = 0
+        items_4399 = []
         c4399 = FeishuClient(spreadsheet_token=SPREADSHEET_TOKEN_4399, sheet_id=SHEET_ID_4399)
         rows4_raw = c4399.read_sheet()
         rows4_fmt = c4399.read_sheet(render='FormattedValue')
@@ -365,11 +497,15 @@ def sync_report_cache() -> dict:
             o = str(row[14] or '').strip() if len(row) > 14 else ''
             if o == '已请款':
                 continue
-            count_4399 += 1
             try:
                 fmt_row = rows4_fmt[i] if i < len(rows4_fmt) else row
                 j_val = float(fmt_row[9]) if len(fmt_row) > 9 and fmt_row[9] is not None else 0
+                if j_val <= 0:
+                    continue
+                count_4399 += 1
                 amount_4399 += j_val
+                req_name = str(row[1] or '')[:40] if len(row) > 1 else ''
+                items_4399.append({"name": req_name, "amount": round(j_val, 2), "date": dd.strftime("%m/%d")})
                 if dd.date() >= last_month_start:
                     month_total_amount += j_val
             except (ValueError, TypeError):
@@ -393,11 +529,15 @@ def sync_report_cache() -> dict:
             g = str(row[6] or '').strip() if len(row) > 6 else ''
             if g != '已交付':
                 continue
-            count_4399 += 1
             try:
                 fmt_row = rowsb_fmt[i] if i < len(rowsb_fmt) else row
                 amt = float(fmt_row[5]) if len(fmt_row) > 5 and fmt_row[5] is not None else 0
+                if amt <= 0:
+                    continue
+                count_4399 += 1
                 amount_4399 += amt
+                req_name = str(row[1] or '')[:40] if len(row) > 1 else ''
+                items_4399.append({"name": req_name, "amount": round(amt, 2), "date": dd.strftime("%m/%d")})
                 if dd.date() >= last_month_start:
                     month_total_amount += amt
             except (ValueError, TypeError):
@@ -406,8 +546,10 @@ def sync_report_cache() -> dict:
             company_summary["4399"]["amount"] += amount_4399
             company_summary["4399"]["count"] += count_4399
             if "4399" not in company_summary["4399"]["projects"]:
-                company_summary["4399"]["projects"]["4399"] = 0
-            company_summary["4399"]["projects"]["4399"] += count_4399
+                company_summary["4399"]["projects"]["4399"] = {"count": 0, "amount": 0.0, "items": []}
+            company_summary["4399"]["projects"]["4399"]["count"] += count_4399
+            company_summary["4399"]["projects"]["4399"]["amount"] += amount_4399
+            company_summary["4399"]["projects"]["4399"]["items"].extend(items_4399)
         unsettled_count += count_4399
         unsettled_amount += amount_4399
     except Exception:

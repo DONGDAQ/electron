@@ -20,10 +20,6 @@
         "from": "app",
         "to": "app",
         "filter": ["**/*", "!outputs/**", "!报价单历史/**", "!结算/**", "!汇总/**", "!**/*.log", "!**/__pycache__/**"]
-      },
-      {
-        "from": "dist/flask_build/flask_server.exe",
-        "to": "app/flask_server.exe"
       }
     ],
     "win": {
