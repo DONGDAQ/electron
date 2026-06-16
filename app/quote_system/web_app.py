@@ -476,7 +476,7 @@ def auto_quote_logs() -> Response:
             mtime = datetime.fromtimestamp(tk_log.stat().st_mtime)
             done_match = None
             for line in content.splitlines():
-                if line.startswith("Done:"):
+                if line.startswith("Done:") or "完成:" in line:
                     done_match = line
             logs.append({
                 "project": "tk",

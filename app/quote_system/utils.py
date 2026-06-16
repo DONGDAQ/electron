@@ -140,6 +140,12 @@ def _extract_summary(output: str, status: str) -> str:
     if m:
         return f"处理 {m.group(1)} 条"
 
+    # 完美世界: "行 X 处理完成!"
+    m = re.search(r'行\s*(\d+)\s*处理完成', text)
+    if m:
+        count = len(re.findall(r'行\s*\d+\s*处理完成', text))
+        return f"处理 {count} 条"
+
     # bang2: "找到 X 个待报价文档" 或处理行数
     m = re.search(r'找到\s*(\d+)\s*个待报价', text)
     if m:
@@ -147,6 +153,11 @@ def _extract_summary(output: str, status: str) -> str:
         if processed > 0:
             return f"处理 {processed} 条"
         return f"找到 {m.group(1)} 条待报价"
+
+    # 战双: "状态已更新为'已生成'" → 统计更新条数
+    m = re.findall(r'状态已更新', text)
+    if m:
+        return f"更新 {len(m)} 条状态"
 
     # 没找到需求的各种表述
     if '没有找到' in text or '没有待' in text:

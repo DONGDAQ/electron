@@ -203,10 +203,21 @@ class TestBasePaths:
         assert "settlement_base" in data
 
     def test_should_save_base_paths(self, client):
-        resp = client.post("/api/base-paths",
-                          data=json.dumps({"quote_history_base": "D:/baojia/quotes"}),
-                          content_type="application/json")
-        assert resp.status_code == 200
+        # 保存原始配置，测试后还原（防止覆盖用户真实配置）
+        from quote_system.paths import _USER_CONFIG
+        original = None
+        if _USER_CONFIG.exists():
+            original = _USER_CONFIG.read_text(encoding="utf-8")
+        try:
+            resp = client.post("/api/base-paths",
+                              data=json.dumps({"quote_history_base": "D:/baojia/test_quotes_not_real"}),
+                              content_type="application/json")
+            assert resp.status_code == 200
+        finally:
+            if original is not None:
+                _USER_CONFIG.write_text(original, encoding="utf-8")
+            elif _USER_CONFIG.exists():
+                _USER_CONFIG.unlink()
 
 
 # ========== 报价历史端点测试 ==========
