@@ -42,16 +42,6 @@ class TestIndexPage:
         assert resp.headers["Pragma"] == "no-cache"
 
 
-class TestMobilePage:
-    def test_should_return_200(self, client):
-        resp = client.get("/mobile")
-        assert resp.status_code == 200
-
-    def test_should_return_html(self, client):
-        resp = client.get("/mobile")
-        assert "text/html" in resp.content_type
-
-
 class TestReportPage:
     def test_should_return_200(self, client):
         resp = client.get("/report")
@@ -214,7 +204,7 @@ class TestBasePaths:
 
     def test_should_save_base_paths(self, client):
         resp = client.post("/api/base-paths",
-                          data=json.dumps({"quote_history_base": "D:/test"}),
+                          data=json.dumps({"quote_history_base": "D:/baojia/quotes"}),
                           content_type="application/json")
         assert resp.status_code == 200
 
@@ -371,12 +361,6 @@ class TestBoundaryConditions:
         resp = client.get("/quote-history?project=../../../etc")
         # 路径遍历被 resolve_project 优雅拦截
         assert resp.status_code in (200, 500)
-
-    def test_mobile_generate_with_empty_request(self, client):
-        resp = client.post("/mobile/generate", data={})
-        assert resp.status_code == 200
-        data = json.loads(resp.data)
-        assert data["status"] == "error"
 
     def test_settlement_files_without_project(self, client):
         resp = client.get("/api/settlement-files")

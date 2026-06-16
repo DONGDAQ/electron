@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from quote_system.paths import get_settlement_dir
+from settlement._com_utils import com_excel
 
 TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 SETTLEMENT_COMPANY = "Bilibili"
@@ -39,19 +40,15 @@ def _get_sealed_config(project_key: str) -> dict:
 
 def _recalc_and_read(bill_path: Path) -> float | None:
     """用 Excel 打开文件重算公式，保存后读取 GRAND TOTAL。"""
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
     try:
-        wb = excel.Workbooks.Open(str(bill_path.resolve()))
-        wb.Save()
-        wb.Close()
-        excel.Quit()
+        with com_excel() as excel:
+            wb = excel.Workbooks.Open(str(bill_path.resolve()))
+            wb.Save()
+            wb.Close()
+    except Exception:
+        pass
 
+    try:
         wb2 = openpyxl.load_workbook(bill_path, data_only=True)
         ws = wb2.active
         for r in range(1, ws.max_row + 1):
@@ -63,20 +60,6 @@ def _recalc_and_read(bill_path: Path) -> float | None:
                 break
     except Exception:
         pass
-    finally:
-        try:
-            if wb:
-                wb.Close()
-        except Exception:
-            pass
-        try:
-            excel.Quit()
-        except Exception:
-            pass
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
     return None
 
 
@@ -193,30 +176,8 @@ def _update_date_runs(cell, year: int, month: int, day: int) -> None:
 
 def _convert_to_pdf(docx_path: Path, pdf_path: Path) -> None:
     """使用 Word COM 对象将 docx 另存为 PDF。"""
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-
-    word = win32com.client.Dispatch("Word.Application")
-    word.Visible = False
-    word.DisplayAlerts = False
-
-    doc = None
-    try:
-        doc = word.Documents.Open(str(docx_path.resolve()))
-        doc.SaveAs(str(pdf_path.resolve()), FileFormat=17)  # 17 = wdFormatPDF
-        doc.Close()
-    finally:
-        if doc:
-            try:
-                doc.Close()
-            except Exception:
-                pass
-        word.Quit()
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
+    from settlement._com_utils import docx_to_pdf
+    docx_to_pdf(docx_path, pdf_path)
 
 
 def main():

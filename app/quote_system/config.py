@@ -16,30 +16,46 @@ class LanguageConfig:
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "language_config.json"
 
+_config_cache: dict | None = None
+_config_cache_mtime: float = 0
+
 
 def ensure_config_dir():
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def load_language_config(project_key: str) -> LanguageConfig | None:
-    ensure_config_dir()
+def _load_all_configs() -> dict:
+    global _config_cache, _config_cache_mtime
+    try:
+        if CONFIG_PATH.exists():
+            mt = CONFIG_PATH.stat().st_mtime
+            if _config_cache is not None and mt == _config_cache_mtime:
+                return _config_cache
+    except Exception:
+        pass
+
     if not CONFIG_PATH.exists():
-        return None
-    
+        return {}
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            configs = json.load(f)
-        
-        if project_key in configs:
-            data = configs[project_key]
-            return LanguageConfig(
-                project_key=project_key,
-                languages=data.get("languages", {}),
-                default_languages=data.get("default_languages", []),
-            )
-        return None
+            _config_cache = json.load(f)
+            _config_cache_mtime = CONFIG_PATH.stat().st_mtime
+            return _config_cache
     except Exception:
-        return None
+        return {}
+
+
+def load_language_config(project_key: str) -> LanguageConfig | None:
+    ensure_config_dir()
+    configs = _load_all_configs()
+    if project_key in configs:
+        data = configs[project_key]
+        return LanguageConfig(
+            project_key=project_key,
+            languages=data.get("languages", {}),
+            default_languages=data.get("default_languages", []),
+        )
+    return None
 
 
 def save_language_config(project_key: str, languages: dict[str, float], default_languages: list[str]):

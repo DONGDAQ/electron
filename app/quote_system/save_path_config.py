@@ -5,51 +5,42 @@ from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "save_path_config.json"
 
+_config_cache: dict | None = None
+_config_cache_mtime: float = 0
+
+
+def _load_all() -> dict:
+    global _config_cache, _config_cache_mtime
+    try:
+        if CONFIG_PATH.exists():
+            mt = CONFIG_PATH.stat().st_mtime
+            if _config_cache is not None and mt == _config_cache_mtime:
+                return _config_cache
+    except Exception:
+        pass
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            _config_cache = json.load(f)
+            _config_cache_mtime = CONFIG_PATH.stat().st_mtime
+            return _config_cache
+    except Exception:
+        return {}
+
 
 def get_save_path(project_key: str) -> str | None:
     """获取指定项目的默认保存路径"""
-    if not CONFIG_PATH.exists():
-        return None
-    
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            configs = json.load(f)
-        
-        return configs.get(project_key)
-    except Exception:
-        return None
+    return _load_all().get(project_key)
 
 
 def set_save_path(project_key: str, save_path: str):
     """设置指定项目的默认保存路径"""
+    global _config_cache, _config_cache_mtime
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
-    if CONFIG_PATH.exists():
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                configs = json.load(f)
-        except Exception:
-            configs = {}
-    else:
-        configs = {}
-    
+    configs = _load_all()
     configs[project_key] = save_path
-    
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(configs, f, ensure_ascii=False, indent=2)
-
-
-def clear_save_path(project_key: str):
-    """清除指定项目的默认保存路径"""
-    if CONFIG_PATH.exists():
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                configs = json.load(f)
-            
-            if project_key in configs:
-                del configs[project_key]
-                
-                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                    json.dump(configs, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+    _config_cache = None
+    _config_cache_mtime = 0

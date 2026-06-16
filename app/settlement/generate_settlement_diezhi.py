@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 import sys as _sys
 _sys.path.insert(0, str(BASE_DIR / "app"))
 from quote_system.paths import get_quote_history_dir, get_settlement_dir
+from settlement._com_utils import com_excel
 
 QUOTE_BASE = get_quote_history_dir()
 TEMPLATE_PATH = BASE_DIR / "app" / "模板" / "结算模板" / "【大连游者之家】结算单_《X3.X6.闪暖》2026年4月模板.xlsx"
@@ -73,25 +74,14 @@ INVOICE_COMPANIES = {
 
 
 def _ensure_formulas_cached(filepath):
-    import pythoncom
-    import win32com.client
-    pythoncom.CoInitialize()
     try:
-        excel = win32com.client.DispatchEx('Excel.Application')
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        wb = excel.Workbooks.Open(filepath)
-        excel.CalculateUntilAsyncQueriesDone()
-        wb.Save()
-        wb.Close()
-        excel.Quit()
+        with com_excel() as excel:
+            wb = excel.Workbooks.Open(filepath)
+            excel.CalculateUntilAsyncQueriesDone()
+            wb.Save()
+            wb.Close()
     except Exception as e:
         print(f'[WARN] Excel重算失败: {e}')
-    finally:
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
 
 
 def scan_quote_files(history_dir):
@@ -419,27 +409,16 @@ def generate_all(year, month):
             results[key] = {'path': str(path), 'amount': total_amount, 'words': total_words}
 
     # 用Excel重算所有生成的结算单
-    import pythoncom
-    import win32com.client
-    pythoncom.CoInitialize()
     try:
-        excel = win32com.client.DispatchEx('Excel.Application')
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        for key, info in results.items():
-            if info['path']:
-                wb = excel.Workbooks.Open(info['path'])
-                excel.CalculateUntilAsyncQueriesDone()
-                wb.Save()
-                wb.Close()
-        excel.Quit()
+        with com_excel() as excel:
+            for key, info in results.items():
+                if info['path']:
+                    wb = excel.Workbooks.Open(info['path'])
+                    excel.CalculateUntilAsyncQueriesDone()
+                    wb.Save()
+                    wb.Close()
     except Exception as e:
         print(f'[WARN] 结算单Excel重算失败: {e}')
-    finally:
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
 
     # 生成开票信息
     generate_invoice_info(results, year, month)

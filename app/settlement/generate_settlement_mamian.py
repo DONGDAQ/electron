@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from quote_system.paths import get_quote_history_dir, get_settlement_dir
+from quote_system.utils import excel_serial_to_date
+from settlement._com_utils import com_excel
 
 TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 OUTPUT_DIR = get_settlement_dir()
@@ -52,10 +54,6 @@ def _get_bill_config(project_key: str) -> dict:
     return cfg
 
 
-def excel_serial_to_date(serial: float) -> date:
-    return date(1899, 12, 30) + __import__("datetime").timedelta(days=serial)
-
-
 def _sum_data_column(qs, col: int, start_row: int, end_row: int) -> int:
     total = 0
     for r in range(start_row, end_row):
@@ -67,34 +65,14 @@ def _sum_data_column(qs, col: int, start_row: int, end_row: int) -> int:
 
 def _recalc_quote(xlsx_path: Path) -> bool:
     """用 Excel 打开报价单重算公式，保存缓存值。成功返回 True。"""
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
     try:
-        wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
-        wb.Save()
-        wb.Close()
+        with com_excel() as excel:
+            wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
+            wb.Save()
+            wb.Close()
         return True
     except Exception:
         return False
-    finally:
-        try:
-            if wb:
-                wb.Close()
-        except Exception:
-            pass
-        try:
-            excel.Quit()
-        except Exception:
-            pass
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
 
 
 def _read_summary_row(qs, project_key: str) -> float | None:
@@ -171,7 +149,7 @@ def _find_delivery_date(ws) -> str | None:
 def _parse_date(val) -> str | None:
     if isinstance(val, (int, float)) and val > 40000:
         try:
-            return excel_serial_to_date(val).isoformat()
+            return excel_serial_to_date(val, as_date=True).isoformat()
         except Exception:
             pass
     elif isinstance(val, datetime):

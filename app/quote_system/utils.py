@@ -1,11 +1,76 @@
 """共享工具函数：日期解析、日志保存、API 异常处理装饰器等"""
 from __future__ import annotations
 
+import io
 import json
+import sys
 import traceback
-from datetime import date, datetime
+from contextlib import contextmanager
+from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
+
+
+def configure_output() -> None:
+    """重配置 stdout/stderr 编码为 UTF-8"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, AttributeError):
+            pass
+
+
+def calc_billable(stats, lang: str = "") -> int:
+    """计算战双报价字数：85%以上匹配不计费，其余全量计费。"""
+    zero_types = {"x-translated / double context", "repetition", "101%",
+                  "100%", "95%-99%", "context", "exact"}
+    is_en = lang == "英-韩"
+    total = 0
+    for row in stats.rows:
+        t = str(row.type).strip().lower() if row.type else ""
+        if t in zero_types or t in ("all",):
+            continue
+        if is_en:
+            total += row.source_non_asian_words or 0
+        else:
+            total += row.source_asian_characters or 0
+    return total
+
+
+def validate_year_month(year: int, month: int) -> None:
+    """校验年月参数，无效时抛出 BadRequest"""
+    if not (2020 <= year <= 2099 and 1 <= month <= 12):
+        raise BadRequest("年月参数无效")
+
+
+class BadRequest(ValueError):
+    """400 错误，api_handler 捕获后返回 400 而非 500"""
+    pass
+
+
+@contextmanager
+def capture_stdout():
+    """捕获 stdout 输出的上下文管理器"""
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    try:
+        yield buffer
+    finally:
+        sys.stdout = old_stdout
+
+
+def excel_serial_to_date(serial, *, as_date: bool = False) -> datetime | date | None:
+    """Excel 日期序列号转日期。as_date=True 返回 date，否则返回 datetime。"""
+    try:
+        num = float(serial)
+    except (TypeError, ValueError):
+        return None
+    base = datetime(1899, 12, 30)
+    try:
+        result = base + timedelta(days=num)
+        return result.date() if as_date else result
+    except Exception:
+        return None
 
 from flask import jsonify, Response
 
@@ -20,6 +85,8 @@ def api_handler(fn):
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
+        except BadRequest as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 400
         except Exception as exc:
             traceback.print_exc()
             return jsonify({"status": "error", "message": str(exc)}), 500

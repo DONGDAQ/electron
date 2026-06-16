@@ -15,6 +15,8 @@ import openpyxl
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from quote_system.feishu_client import FeishuClient
 from quote_system.paths import get_settlement_dir
+from quote_system.utils import excel_serial_to_date
+from settlement._com_utils import com_excel
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = ROOT / "app" / "模板" / "结算模板"
@@ -106,18 +108,6 @@ def _fetch_rate_for_date(date_str: str) -> float | None:
             if item[1] == "美元":
                 return float(item[2]) / 100
         return None
-    except Exception:
-        return None
-
-
-def excel_serial_to_date(serial) -> datetime | None:
-    try:
-        num = float(serial)
-    except (TypeError, ValueError):
-        return None
-    base = datetime(1899, 12, 30)
-    try:
-        return base + timedelta(days=num)
     except Exception:
         return None
 
@@ -346,61 +336,17 @@ def _read_settlement_h42(xlsx_path: Path) -> float:
 
 
 def _recalc_excel(file_path: Path):
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
-    try:
+    with com_excel() as excel:
         wb = excel.Workbooks.Open(str(file_path.resolve()))
         excel.CalculateUntilAsyncQueriesDone()
         wb.Save()
         wb.Close()
-    finally:
-        try:
-            if wb:
-                wb.Close()
-        except Exception:
-            pass
-        try:
-            excel.Quit()
-        except Exception:
-            pass
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
 
 
 def _convert_to_pdf(xlsx_path: Path) -> Path:
     pdf_path = xlsx_path.with_suffix(".pdf")
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
-    try:
-        wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
-        wb.SaveAs(str(pdf_path.resolve()), FileFormat=57)
-        wb.Close()
-    finally:
-        try:
-            if wb:
-                wb.Close()
-        except Exception:
-            pass
-        try:
-            excel.Quit()
-        except Exception:
-            pass
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
+    from settlement._com_utils import xlsx_to_pdf
+    xlsx_to_pdf(xlsx_path, pdf_path)
     return pdf_path
 
 

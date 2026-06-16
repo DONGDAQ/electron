@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .memoq_html import is_same_as_above, parse_memoq_html, stats_to_output_values
+from .utils import configure_output
 
 ORIGINAL_SHEET_URL = "https://my.feishu.cn/sheets/R8QWsav9Nh77V3tWdTQchuCfnMc"
 SHEET_ID = "d73cd4"
@@ -350,14 +351,6 @@ def write_o_y(row_num: int, values: list[int]) -> None:
     data = json.loads(result.stdout)
     if not data.get("ok"):
         raise RuntimeError(f"Write failed: {data}")
-
-
-def configure_output() -> None:
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (OSError, AttributeError):
-            pass
 
 
 # ---- TK 数据缓存 ----

@@ -9,6 +9,7 @@ import openpyxl
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from quote_system.feishu_client import FeishuClient
 from quote_system.paths import get_settlement_dir
+from quote_system.utils import excel_serial_to_date
 
 SPREADSHEET_TOKEN = "Wup0wnUPIiiIr2k8T23c4zASnjd"
 SHEET_ID = "WmpiFq"
@@ -24,11 +25,6 @@ UNIT_PRICES = {
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "app" / "模板" / "结算模板"
-
-
-def excel_serial_to_date(serial):
-    base = datetime(1899, 12, 30)
-    return base + timedelta(days=float(serial))
 
 
 def read_feishu_data(year, months):

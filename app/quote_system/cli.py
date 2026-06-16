@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .generator import QuoteRequest, generate_quote
 from .projects import PROJECTS, resolve_project
-from .utils import parse_date
+from .utils import configure_output, parse_date
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,11 +61,3 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--request-name", help="输出文件名里的需求名，例如 0416需求")
     generate.add_argument("--output", help="指定输出 xlsx 路径；不填则保存到报价单历史对应项目目录")
     return parser
-
-
-def configure_output() -> None:
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8")
-        except (OSError, AttributeError):
-            pass

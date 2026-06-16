@@ -15,23 +15,11 @@ CACHE_FILE = OUTPUTS_DIR / "cache" / "report_dashboard.json"
 
 
 def _win32com_refresh(fpath: Path):
-    import win32com.client
-    excel = None
+    from settlement._com_utils import recalc_excel
     try:
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        wb_com = excel.Workbooks.Open(str(fpath))
-        wb_com.Save()
-        wb_com.Close()
+        recalc_excel(fpath)
     except Exception:
         pass
-    finally:
-        if excel:
-            try:
-                excel.Quit()
-            except Exception:
-                pass
 
 
 def _read_delivery_date(fpath: Path) -> str:

@@ -2,7 +2,6 @@
    批次驱动，整页复制在线表重复匹配率数据到模板"""
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import sys
@@ -16,8 +15,9 @@ sys.path.insert(0, str(ROOT))
 import openpyxl
 
 from quote_system.feishu_client import FeishuClient, excel_date_serial_to_date
-from quote_system.projects import PROJECTS, resolve_project
+from quote_system.projects import resolve_project
 from quote_system.save_path_config import get_save_path
+from quote_system.utils import excel_serial_to_date as _excel_serial_to_date
 from quote_system.paths import get_quote_history_dir
 
 # Default starting batch numbers (used when no history found)
@@ -86,20 +86,6 @@ def _batch_output_filename(template_name: str, new_batch: int) -> str:
 def _col_letter_to_idx(col: str) -> int:
     """A->0, B->1, ..."""
     return ord(col.upper()) - 65
-
-
-def _excel_serial_to_date(serial) -> date | None:
-    """Excel日期序列号 → date"""
-    try:
-        num = float(serial)
-    except (TypeError, ValueError):
-        return None
-    from datetime import timedelta
-    base = datetime(1899, 12, 30)
-    try:
-        return (base + timedelta(days=num)).date()
-    except Exception:
-        return None
 
 
 # ── Public API ──────────────────────────────────────────────────────
@@ -322,7 +308,7 @@ def get_delivery_date(project_key: str, batch_no: int) -> date | None:
             continue
 
         dval = row[dcol] if len(row) > dcol else None
-        d = _excel_serial_to_date(dval)
+        d = _excel_serial_to_date(dval, as_date=True)
         if d and (latest is None or d > latest):
             latest = d
 

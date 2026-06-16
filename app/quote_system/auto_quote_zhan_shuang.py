@@ -17,6 +17,7 @@ from quote_system.generator import QuoteRequest, generate_quote
 from quote_system.memoq_html import parse_memoq_html
 from quote_system.save_path_config import get_save_path
 from quote_system.paths import get_quote_history_dir
+from quote_system.utils import calc_billable
 
 SPREADSHEET_TOKEN = "Wup0wnUPIiiIr2k8T23c4zASnjd"
 SHEET_ID = "WmpiFq"
@@ -126,23 +127,6 @@ def find_mail_rows(rows: list[list]) -> list[dict]:
     # 按日期排序
     result.sort(key=lambda x: x["date_str"])
     return result
-
-
-def calc_billable(stats, lang: str = "") -> float:
-    """计算战双报价字数：85%以上匹配不计费，其余全量计费。"""
-    zero_rate_types = {"X-translated / double context", "Repetition", "101%",
-                       "100%", "95%-99%", "context", "exact"}
-    is_en = lang == "英-韩"
-    total = 0.0
-    for row in stats.rows:
-        t = row.type.strip() if row.type else ""
-        if t in zero_rate_types or t in ("All",):
-            continue
-        if is_en:
-            total += row.source_non_asian_words or 0
-        else:
-            total += row.source_asian_characters or 0
-    return round(total, 2)
 
 
 def process_group(client: FeishuClient, project, work_dir: Path, items: list[dict]):

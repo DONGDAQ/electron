@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 import openpyxl
 
 from quote_system.paths import get_settlement_dir
+from settlement._com_utils import recalc_excel, xlsx_to_pdf
 
 TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 
@@ -79,27 +80,7 @@ def _is_empty_row(ws, r: int) -> bool:
 
 
 def _recalc_excel(file_path: Path):
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
-    try:
-        wb = excel.Workbooks.Open(str(file_path.resolve()))
-        wb.Save()
-        wb.Close()
-    finally:
-        try:
-            if wb: wb.Close()
-        except Exception: pass
-        try:
-            excel.Quit()
-        except Exception: pass
-        try:
-            pythoncom.CoUninitialize()
-        except Exception: pass
+    recalc_excel(file_path)
 
 
 def generate_settlement_pdf(year: int, month: int) -> Path:
@@ -199,23 +180,4 @@ def _find_orderlist(year: int, month: int) -> Path:
 
 
 def _convert_xlsx_to_pdf(xlsx_path: Path, pdf_path: Path) -> None:
-    import pythoncom
-    pythoncom.CoInitialize()
-    import win32com.client
-
-    excel = win32com.client.DispatchEx("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
-    wb = None
-    try:
-        wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
-        wb.SaveAs(str(pdf_path.resolve()), FileFormat=57)
-        wb.Close()
-    finally:
-        if wb:
-            try: wb.Close()
-            except Exception: pass
-        excel.Quit()
-        try:
-            pythoncom.CoUninitialize()
-        except Exception: pass
+    xlsx_to_pdf(xlsx_path, pdf_path)

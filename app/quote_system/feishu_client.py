@@ -53,7 +53,7 @@ class FeishuClient:
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         data = json.dumps({"app_id": APP_ID, "app_secret": APP_SECRET}).encode()
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req, timeout=30)
         result = json.loads(resp.read())
         if result.get("code") != 0:
             raise RuntimeError(f"飞书认证失败: {result}")
@@ -69,7 +69,7 @@ class FeishuClient:
         })
         req.method = method
         try:
-            resp = urllib.request.urlopen(req)
+            resp = urllib.request.urlopen(req, timeout=30)
             response_body = resp.read().decode()
             # 检查响应是否为HTML（错误页面）
             if response_body.startswith('<!doctype') or response_body.startswith('<!DOCTYPE'):
@@ -149,19 +149,6 @@ class FeishuClient:
         if result.get("code") != 0:
             raise RuntimeError(f"写入范围失败: {result}")
 
-    @classmethod
-    def from_url(cls, sheet_url: str) -> "FeishuClient":
-        """从飞书表格链接创建客户端。"""
-        parsed = urllib.parse.urlparse(sheet_url)
-        parts = [part for part in parsed.path.split("/") if part]
-        try:
-            spreadsheet_token = parts[parts.index("sheets") + 1]
-        except (ValueError, IndexError) as exc:
-            raise ValueError(f"无法从链接解析飞书表格 token: {sheet_url}") from exc
-        query = urllib.parse.parse_qs(parsed.query)
-        sheet_id = query.get("sheet", [DEFAULT_SHEET_ID])[0]
-        return cls(sheet_id=sheet_id, spreadsheet_token=spreadsheet_token)
-
     def download_attachment(self, file_token: str, save_path: Path) -> Path:
         """下载飞书附件到本地"""
         self._ensure_token()
@@ -169,7 +156,7 @@ class FeishuClient:
         req = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {self._token}",
         })
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req, timeout=30)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         save_path.write_bytes(resp.read())
         return save_path
@@ -188,7 +175,7 @@ class FeishuClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         })
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req, timeout=30)
         result = json.loads(resp.read())
         if result.get("code") != 0:
             raise RuntimeError(f"上传文件失败: {result}")
@@ -259,22 +246,6 @@ class FeishuClient:
             body)
         if result.get("code") != 0:
             raise RuntimeError(f"设置单元格样式失败: {result}")
-
-    def set_row_background(self, row: int, color: str):
-        """设置整行背景色，color 为 hex 如 '#D9D9D9'"""
-        body = {
-            "appendStyle": {
-                "range": f"{self.sheet_id}!A{row}:Z{row}",
-                "style": {
-                    "backColor": color,
-                },
-            }
-        }
-        result = self._api("PUT",
-            f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{self.spreadsheet_token}/style",
-            body)
-        if result.get("code") != 0:
-            raise RuntimeError(f"设置行背景色失败: {result}")
 
     def _write_cell_value(self, row: int, col: int, value):
         body = {

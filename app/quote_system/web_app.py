@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import io
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
+import traceback
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -14,7 +17,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 from markupsafe import Markup, escape
 
 from .config import get_effective_language_config, save_language_config, reset_to_default
-from .utils import api_handler
+from .utils import api_handler, capture_stdout, clean_optional, excel_serial_to_date, parse_date, validate_year_month, BadRequest
 from .generator import QuoteRequest, generate_quote
 from .memoq_html import quote_words
 from .projects import PROJECTS, resolve_project, get_projects_by_company, save_project_config
@@ -71,6 +74,21 @@ def _no_cache(response: Response) -> Response:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+@app.errorhandler(BadRequest)
+def handle_bad_request(exc):
+    return jsonify({"status": "error", "message": str(exc)}), 400
+
+
+_BLOCKED_PATHS = [
+    re.compile(r'^[A-Za-z]:/test$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:/tmp$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:\\test$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:\\tmp$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:/测试$'),
+    re.compile(r'^[A-Za-z]:\\测试$'),
+]
 
 
 @app.get("/")
@@ -182,52 +200,6 @@ def generate() -> Response:
     return redirect(url_for("index", project=request.form.get("project", "")))
 
 
-def detect_project(message: str) -> str | None:
-    message_lower = message.lower()
-    
-    for proj in PROJECTS:
-        for alias in proj.aliases:
-            if alias.lower() in message_lower:
-                return proj.key
-    
-    if "马娘" in message or "优俊" in message:
-        return "maniang"
-    if "战双" in message:
-        return "zhan_shuang"
-    if "bang" in message_lower or "bang2" in message_lower:
-        return "bang2"
-    
-    return None
-
-
-def extract_dates_from_message(message: str) -> list[date]:
-    import re
-    dates = []
-    
-    date_patterns = [
-        r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"(\d{1,2})[月/-](\d{1,2})[日]?",
-    ]
-    
-    for pattern in date_patterns:
-        matches = re.findall(pattern, message)
-        for match in matches:
-            try:
-                if len(match) == 3:
-                    year = int(match[0]) if len(match[0]) == 4 else date.today().year
-                    month = int(match[1])
-                    day = int(match[2])
-                    dates.append(date(year, month, day))
-                elif len(match) == 2:
-                    month = int(match[0])
-                    day = int(match[1])
-                    dates.append(date(date.today().year, month, day))
-            except ValueError:
-                continue
-    
-    return dates
-
-
 @app.post("/save-language-config")
 def save_language_config_endpoint() -> Response:
     try:
@@ -284,25 +256,15 @@ def get_base_paths() -> Response:
 @app.post("/api/base-paths")
 def save_base_paths() -> Response:
     try:
-        import json as _json
-        import re
         data = request.get_json() or {}
 
         # ---- 校验：拒绝明显的测试/占位路径 ----
-        _BLOCKED = [
-            re.compile(r'^[A-Za-z]:/test$', re.IGNORECASE),
-            re.compile(r'^[A-Za-z]:/tmp$', re.IGNORECASE),
-            re.compile(r'^[A-Za-z]:\\test$', re.IGNORECASE),
-            re.compile(r'^[A-Za-z]:\\tmp$', re.IGNORECASE),
-            re.compile(r'^[A-Za-z]:/测试$'),
-            re.compile(r'^[A-Za-z]:\\测试$'),
-        ]
         for key in ("quote_history_base", "settlement_base"):
             if key in data:
                 pval = data[key].strip()
                 if not pval:
                     continue
-                for pat in _BLOCKED:
+                for pat in _BLOCKED_PATHS:
                     if pat.match(pval):
                         return jsonify({
                             "status": "error",
@@ -378,14 +340,14 @@ def all_quotes() -> Response:
 @app.get("/api/report-dashboard")
 def report_dashboard() -> Response:
     """从缓存读取报告数据，补充 today_runs 后返回"""
-    import json as _json
+    pass
 
     cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
     if not cache_file.exists():
         return {"status": "empty", "message": "报告缓存不存在，请先执行自动报价或手动刷新"}
 
     try:
-        data = _json.loads(cache_file.read_text(encoding="utf-8"))
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
     except Exception:
         return {"status": "error", "message": "缓存读取失败"}
 
@@ -393,7 +355,7 @@ def report_dashboard() -> Response:
     index_file = OUTPUTS_DIR / "logs" / "auto_quote" / "_index.json"
     if index_file.exists():
         try:
-            index = _json.loads(index_file.read_text(encoding="utf-8"))
+            index = json.loads(index_file.read_text(encoding="utf-8"))
             for entry in index:
                 ts = entry.get("timestamp", "")
                 if ts and ts.startswith(date.today().strftime("%Y-%m-%d")):
@@ -438,8 +400,8 @@ def report_dashboard_refresh_status() -> Response:
     sync_time = None
     if cache_file.exists():
         try:
-            import json as _json
-            data = _json.loads(cache_file.read_text(encoding="utf-8"))
+            pass
+            data = json.loads(cache_file.read_text(encoding="utf-8"))
             sync_time = data.get("sync_time")
         except Exception:
             pass
@@ -492,14 +454,14 @@ def project_detail() -> Response:
 @app.get("/api/auto-quote-logs")
 def auto_quote_logs() -> Response:
     """返回所有执行记录（自动报价 + 手动填表）"""
-    import json as _json
+    pass
     logs = []
 
     # 自动报价记录
     index_file = OUTPUTS_DIR / "logs" / "auto_quote" / "_index.json"
     if index_file.exists():
         try:
-            idx = _json.loads(index_file.read_text(encoding="utf-8"))
+            idx = json.loads(index_file.read_text(encoding="utf-8"))
             for e in idx:
                 e["type"] = "auto"
             logs.extend(idx)
@@ -573,117 +535,73 @@ def download() -> Response:
 
 def _save_auto_quote_log(project_key: str, output: str, status: str):
     """保存自动报价执行日志"""
-    log_dir = OUTPUTS_DIR / "logs" / "auto_quote"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"{project_key}_{ts}.log"
-    log_file.write_text(output, encoding="utf-8")
-    # 同时维护一个摘要索引
-    index_file = log_dir / "_index.json"
-    import json as _json
-    if index_file.exists():
-        try:
-            index = _json.loads(index_file.read_text(encoding="utf-8"))
-        except Exception:
-            index = []
-    else:
-        index = []
-    index.append({
-        "project": project_key,
-        "timestamp": datetime.now().isoformat(),
-        "status": status,
-        "log_file": str(log_file),
-        "summary": output.strip().split("\n")[-1] if output.strip() else "",
-    })
-    # 只保留最近 500 条
-    if len(index) > 500:
-        index = index[-500:]
-    index_file.write_text(_json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    from .utils import save_auto_quote_log
+    save_auto_quote_log(OUTPUTS_DIR / "logs" / "auto_quote", project_key, output, status)
 
 
 @app.post("/auto-quote")
 def auto_quote() -> Response:
     """完美世界自动报价：从飞书表格读取需求 → 下载HTML → 生成报价单 → 上传回飞书"""
-    import io
-    import sys
     project_key = request.form.get("project", "huanta")
     try:
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
-        auto_quote_run(project_key)
+        with capture_stdout() as buffer:
+            auto_quote_run(project_key)
         output = buffer.getvalue()
         _save_auto_quote_log(project_key, output, "success")
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        import traceback
+        pass
         err = traceback.format_exc()
         _save_auto_quote_log(project_key, err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
-    finally:
-        sys.stdout = old_stdout
 
 
 @app.post("/zhan-shuang/auto-quote")
 def zhan_shuang_auto_quote() -> Response:
     """战双邮件自动报价"""
-    import io
-    import sys
     try:
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
-        zhan_shuang_auto_quote_run()
+        with capture_stdout() as buffer:
+            zhan_shuang_auto_quote_run()
         output = buffer.getvalue()
         _save_auto_quote_log("zhan_shuang", output, "success")
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        import traceback
+        pass
         err = traceback.format_exc()
         _save_auto_quote_log("zhan_shuang", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
-    finally:
-        sys.stdout = old_stdout
 
 
 @app.post("/zhan-shuang/feishu-quote")
 def zhan_shuang_feishu_quote() -> Response:
     """战双飞书双月汇总报价"""
-    import io
-    import sys
     try:
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
-        zhan_shuang_feishu_run()
+        with capture_stdout() as buffer:
+            zhan_shuang_feishu_run()
         output = buffer.getvalue()
         _save_auto_quote_log("zhan_shuang_feishu", output, "success")
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        import traceback
+        pass
         err = traceback.format_exc()
         _save_auto_quote_log("zhan_shuang_feishu", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
-    finally:
-        sys.stdout = old_stdout
 
 
 @app.post("/bang2/auto-quote")
 def bang2_auto_quote() -> Response:
     """BANG2自动报价"""
-    import io
-    import sys
     try:
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
-        bang2_auto_quote_run()
+        with capture_stdout() as buffer:
+            bang2_auto_quote_run()
         output = buffer.getvalue()
         _save_auto_quote_log("bang2", output, "success")
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        import traceback
+        pass
         err = traceback.format_exc()
         _save_auto_quote_log("bang2", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
-    finally:
-        sys.stdout = old_stdout
 
 
 # ======================== 叠纸批次报价 ========================
@@ -706,8 +624,6 @@ def diezhi_batch_info() -> Response:
 @app.post("/diezhi/generate-quote")
 def diezhi_generate_quote() -> Response:
     """生成叠纸项目的批次报价单"""
-    import io
-    import sys
     try:
         data = request.get_json() or {}
         project_key = data.get("project", "")
@@ -722,9 +638,7 @@ def diezhi_generate_quote() -> Response:
         quote_date = parse_date(quote_date_str) if quote_date_str else date.today()
         batch_no = int(batch_no)
 
-        old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
-        try:
+        with capture_stdout() as buffer:
             out_path = generate_batch_quote(
                 project_key=project_key,
                 batch_no=batch_no,
@@ -732,17 +646,15 @@ def diezhi_generate_quote() -> Response:
                 price=float(price) if price is not None else 0.32,
                 service_type=service_type,
             )
-            output = buffer.getvalue()
-            _refresh_report_cache_async()
+        output = buffer.getvalue()
+        _refresh_report_cache_async()
 
-            return jsonify({
-                "status": "success",
-                "output_path": str(out_path),
-                "output_name": out_path.name,
-                "message": output,
-            })
-        finally:
-            sys.stdout = old_stdout
+        return jsonify({
+            "status": "success",
+            "output_path": str(out_path),
+            "output_name": out_path.name,
+            "message": output,
+        })
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
@@ -780,7 +692,11 @@ def start_tk_fill() -> Response:
             # Redirect stdout/stderr to log file
             log_file = open(log_path, "w", encoding="utf-8")
             real_stdout, real_stderr = sys.stdout, sys.stderr
-            sys.stdout = sys.stderr = log_file
+            try:
+                sys.stdout = sys.stderr = log_file
+            except Exception:
+                log_file.close()
+                raise
 
             try:
                 configure_output()
@@ -794,7 +710,7 @@ def start_tk_fill() -> Response:
                 )
                 run(ns)
             except Exception as exc:
-                import traceback
+                pass
                 traceback.print_exc()
             finally:
                 sys.stdout = real_stdout
@@ -854,14 +770,18 @@ def start_fill_4399() -> Response:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "4399_fill.log"
         log_file = log_path.open("w", encoding="utf-8")
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        FILL_4399_PROCESS = subprocess.Popen(
-            args,
-            cwd=str(ROOT),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            creationflags=creationflags,
-        )
+        try:
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            FILL_4399_PROCESS = subprocess.Popen(
+                args,
+                cwd=str(ROOT),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                creationflags=creationflags,
+            )
+        except Exception:
+            log_file.close()
+            raise
         return jsonify({
             "status": "success",
             "message": "已启动 4399 自动填表。正在下载 HTML → 解析 → 填写 K/L/M 列。",
@@ -1148,8 +1068,7 @@ def mamian_bill_preview() -> Response:
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
     project_key = request.args.get("project", "maniang")
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = scan_quotes(year, month, project_key)
     total_words = sum(r["word_count"] for r in records)
@@ -1175,8 +1094,7 @@ def mamian_generate_bill() -> Response:
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     project_key = data.get("project", "maniang")
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = scan_quotes(year, month, project_key)
     if not records:
@@ -1215,8 +1133,7 @@ def mamian_generate_sealed() -> Response:
     total_amount = data.get("total_amount")
     if total_amount is not None:
         total_amount = float(total_amount)
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     output_path = generate_sealed(year, month, total_amount, project_key=project_key)
 
@@ -1244,8 +1161,7 @@ def settlement_preview() -> Response:
     from settlement.generate_settlement import read_feishu_data
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     return jsonify({
@@ -1260,8 +1176,7 @@ def settlement_yh_games_preview() -> Response:
     from settlement.generate_settlement_yh_games import read_feishu_data
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     return jsonify({
@@ -1276,8 +1191,7 @@ def settlement_yh_publish_preview() -> Response:
     from settlement.generate_settlement_yh_publish import read_feishu_data
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     return jsonify({
@@ -1296,8 +1210,7 @@ def settlement_generate() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     if not records:
@@ -1329,8 +1242,7 @@ def settlement_yh_games_generate() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_yh_games_data(year, month)
     if not records:
@@ -1362,8 +1274,7 @@ def settlement_yh_publish_generate() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_yh_publish_data(year, month)
     if not records:
@@ -1405,8 +1316,7 @@ def settlement_batch_perfect_world() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     results = {}
     base_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界"
@@ -1450,8 +1360,7 @@ def settlement_pw_notification_text() -> Response:
 
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     texts = []
     for name, reader, tpl in [
@@ -1507,8 +1416,7 @@ def settlement_zhan_shuang_preview() -> Response:
     from settlement.generate_settlement_zhan_shuang import read_feishu_data
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     total = sum(r['word_count'] for r in records)
@@ -1521,7 +1429,6 @@ def settlement_zhan_shuang_preview() -> Response:
 @api_handler
 @app.post("/api/settlement_zhan_shuang/generate")
 def settlement_zhan_shuang_generate() -> Response:
-    import sys
     sys.modules.pop('settlement.generate_settlement_zhan_shuang', None)
     from settlement.generate_settlement_zhan_shuang import (
         read_feishu_data, generate_settlement_excel,
@@ -1529,8 +1436,7 @@ def settlement_zhan_shuang_generate() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     records = read_feishu_data(year, month)
     if not records:
@@ -1568,8 +1474,10 @@ def settlement_zhan_shuang_faxing_preview() -> Response:
     year = int(request.args.get("year", 0))
     months_str = request.args.get("months", "")
     months = [int(m.strip()) for m in months_str.split(",") if m.strip()]
-    if not (2020 <= year <= 2099 and months and all(1 <= m <= 12 for m in months)):
+    if not months:
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    for m in months:
+        validate_year_month(year, m)
 
     records = read_feishu_data(year, months)
     total_words = sum(r['word_count'] for r in records)
@@ -1586,8 +1494,7 @@ def settlement_zhan_shuang_faxing_preview() -> Response:
 @api_handler
 @app.post("/api/settlement_zhan_shuang_faxing/generate")
 def settlement_zhan_shuang_faxing_generate() -> Response:
-    import sys as _sys
-    _sys.modules.pop('settlement.generate_settlement_zhan_shuang_faxing', None)
+    sys.modules.pop('settlement.generate_settlement_zhan_shuang_faxing', None)
     from settlement.generate_settlement_zhan_shuang_faxing import (
         read_feishu_data, generate_settlement_excel, _month_label,
     )
@@ -1598,8 +1505,10 @@ def settlement_zhan_shuang_faxing_generate() -> Response:
     if not isinstance(months, list):
         months = [int(m.strip()) for m in str(months).split(",") if m.strip()]
     months = [int(m) for m in months]
-    if not (2020 <= year <= 2099 and months and all(1 <= m <= 12 for m in months)):
+    if not months:
         return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    for m in months:
+        validate_year_month(year, m)
 
     records = read_feishu_data(year, months)
     if not records:
@@ -1686,8 +1595,7 @@ def settlement_4399_preview() -> Response:
     )
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     main_data = read_feishu_data_4399(year, month)
     boqi_records = read_feishu_data_boqi(year, month)
@@ -1723,17 +1631,6 @@ def settlement_4399_preview() -> Response:
         "project_count": len(projects_preview),
         "exchange_rate": auto_rate,
     })
-def excel_serial_to_date(serial) -> datetime | None:
-    from datetime import timedelta
-    try:
-        num = float(serial)
-    except (TypeError, ValueError):
-        return None
-    base = datetime(1899, 12, 30)
-    try:
-        return base + timedelta(days=num)
-    except Exception:
-        return None
 
 
 def _mark_4399_settled(year, month):
@@ -1783,15 +1680,13 @@ def _verify_4399_settled(year, month):
 @api_handler
 @app.post("/api/settlement_4399/generate")
 def settlement_4399_generate() -> Response:
-    import sys as _sys
-    _sys.modules.pop('settlement.generate_settlement_4399', None)
+    sys.modules.pop('settlement.generate_settlement_4399', None)
     from settlement.generate_settlement_4399 import generate_all
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     exchange_rate = float(data.get("exchange_rate", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
     if exchange_rate <= 0:
         from settlement.generate_settlement_4399 import get_exchange_rate
         from datetime import datetime as _dt
@@ -1832,13 +1727,11 @@ def settlement_4399_generate() -> Response:
 @api_handler
 @app.get("/api/settlement_diezhi/preview")
 def settlement_diezhi_preview() -> Response:
-    import sys as _sys
-    _sys.modules.pop('settlement.generate_settlement_diezhi', None)
+    sys.modules.pop('settlement.generate_settlement_diezhi', None)
     from settlement.generate_settlement_diezhi import get_all_preview
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     preview = get_all_preview(year, month)
     total_amount = round(sum(p['total_amount'] for p in preview.values()), 2)
@@ -1850,14 +1743,12 @@ def settlement_diezhi_preview() -> Response:
 @api_handler
 @app.post("/api/settlement_diezhi/generate")
 def settlement_diezhi_generate() -> Response:
-    import sys as _sys
-    _sys.modules.pop('settlement.generate_settlement_diezhi', None)
+    sys.modules.pop('settlement.generate_settlement_diezhi', None)
     from settlement.generate_settlement_diezhi import generate_all, get_invoice_info
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     results = generate_all(year, month)
     invoice_text = get_invoice_info(year, month)
@@ -1887,8 +1778,7 @@ def settlement_diezhi_invoice_info() -> Response:
     from settlement.generate_settlement_diezhi import get_invoice_info
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     text = get_invoice_info(year, month)
     return jsonify({
@@ -1905,8 +1795,7 @@ def tk_copy_orderlist() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     output_path = copy_orderlist(year, month)
     os.startfile(str(output_path))
@@ -1923,8 +1812,7 @@ def tk_generate_settlement() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     settlement_path = generate_settlement_pdf(year, month)
     invoice_path = generate_invoice_pdf(year, month)
@@ -1943,8 +1831,7 @@ def settlement_zulong_generate() -> Response:
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     counts = data.get("counts", {})
     yishan = int(counts.get("yishan", 0) or 0)
@@ -2175,8 +2062,7 @@ def generate_invoice_request() -> Response:
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     project_key = data.get("project", "maniang")
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     bill_cfg = _get_bill_config(project_key)
     sealed_cfg = _get_sealed_config(project_key)
@@ -2249,20 +2135,15 @@ def start_quote_all() -> Response:
             with _quote_jobs_lock:
                 job["projects"][key]["status"] = "running"
             try:
-                buf = io.StringIO()
-                old_stdout = sys.stdout
-                sys.stdout = buf
-                try:
+                with capture_stdout() as buf:
                     _execute_single_auto_quote(key)
-                    output = buf.getvalue()
-                    with _quote_jobs_lock:
-                        job["projects"][key]["output"] = output
-                        job["projects"][key]["status"] = "done"
-                    _save_auto_quote_log(key, output, "success")
-                finally:
-                    sys.stdout = old_stdout
+                output = buf.getvalue()
+                with _quote_jobs_lock:
+                    job["projects"][key]["output"] = output
+                    job["projects"][key]["status"] = "done"
+                _save_auto_quote_log(key, output, "success")
             except Exception as e:
-                import traceback
+                pass
                 err_output = traceback.format_exc()
                 with _quote_jobs_lock:
                     job["projects"][key]["status"] = "error"
@@ -2524,10 +2405,6 @@ def _settle_generate_tk(year, month):
     }
 
 
-_diezhi_preview_result: dict = {}
-_diezhi_generate_result: dict = {}
-
-
 def _settle_preview_diezhi(year, month):
     from settlement.generate_settlement_diezhi import get_all_preview
     preview = get_all_preview(year, month)
@@ -2564,8 +2441,7 @@ def _settle_generate_diezhi(year, month):
 def settlement_workbench_preview() -> Response:
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     results = []
     diezhi_done = False
@@ -2606,8 +2482,7 @@ def settlement_workbench_generate() -> Response:
     month = int(data.get("month", 0))
     selected = data.get("projects", [])
     exchange_rate = data.get("exchange_rate")
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
     if not selected:
         return jsonify({"status": "error", "message": "请选择至少一个项目"}), 400
 
@@ -2642,7 +2517,7 @@ def settlement_workbench_generate() -> Response:
             elif proj["type"] == "tk":
                 results[key] = _settle_generate_tk(year, month)
         except Exception as e:
-            import traceback
+            pass
             results[key] = {"status": "error", "message": f"{type(e).__name__}: {str(e)}"}
 
     _refresh_report_cache_async()
@@ -2655,8 +2530,7 @@ def settlement_workbench_generate() -> Response:
 def settlement_workbench_files() -> Response:
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
-    if not (2020 <= year <= 2099 and 1 <= month <= 12):
-        return jsonify({"status": "error", "message": "年月参数无效"}), 400
+    validate_year_month(year, month)
 
     base = get_settlement_dir() / f"{year}年{month}月"
     if not base.exists():
@@ -2790,24 +2664,6 @@ def is_relative_to(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
-
-
-def clean_optional(value: str | None) -> str | None:
-    if value is None:
-        return None
-    value = value.strip()
-    return value or None
-
-def parse_date(value: str | None) -> date | None:
-    value = clean_optional(value)
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    raise ValueError(f"日期格式不正确: {value}")
 
 
 def main() -> None:

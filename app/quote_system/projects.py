@@ -238,22 +238,33 @@ PROJECTS: dict[str, ProjectConfig] = {
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "project_config.json"
 
 
+_config_mtime: float = 0
+
+
 def load_project_config():
-    if CONFIG_PATH.exists():
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                configs = json.load(f)
-            
-            for key, config in configs.items():
-                if key in PROJECTS:
-                    if "display_name" in config:
-                        PROJECTS[key].display_name = config["display_name"]
-                    if "sort_order" in config:
-                        PROJECTS[key].sort_order = config["sort_order"]
-                    if "company" in config:
-                        PROJECTS[key].company = config["company"]
-        except Exception:
-            pass
+    global _config_mtime
+    if not CONFIG_PATH.exists():
+        return
+    try:
+        mt = CONFIG_PATH.stat().st_mtime
+        if mt == _config_mtime:
+            return
+        _config_mtime = mt
+    except Exception:
+        return
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            configs = json.load(f)
+        for key, config in configs.items():
+            if key in PROJECTS:
+                if "display_name" in config:
+                    PROJECTS[key].display_name = config["display_name"]
+                if "sort_order" in config:
+                    PROJECTS[key].sort_order = config["sort_order"]
+                if "company" in config:
+                    PROJECTS[key].company = config["company"]
+    except Exception:
+        pass
 
 
 def save_project_config(project_key: str, display_name: str, sort_order: int, company: str = ""):

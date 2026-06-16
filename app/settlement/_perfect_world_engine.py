@@ -15,6 +15,7 @@ from docx.oxml.ns import qn
 
 from quote_system.feishu_client import FeishuClient
 from quote_system.paths import get_settlement_dir
+from quote_system.utils import excel_serial_to_date as _excel_serial_to_date
 
 
 @dataclass
@@ -84,11 +85,6 @@ PERFECT_WORLD_PROFILES: dict[str, SettlementProfile] = {
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "app" / "模板" / "结算模板"
-
-
-def _excel_serial_to_date(serial):
-    base = datetime(1899, 12, 30)
-    return base + timedelta(days=float(serial))
 
 
 def _format_date_ymd(dt):

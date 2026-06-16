@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ cache_bust }}">
   <script src="{{ url_for('static', filename='lucide.min.js') }}?v={{ cache_bust }}"></script>
   <script src="{{ url_for('static', filename='common.js') }}?v={{ cache_bust }}"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+  <script src="{{ url_for('static', filename='chart.umd.js') }}?v={{ cache_bust }}"></script>
+  <script src="{{ url_for('static', filename='chartjs-plugin-datalabels.min.js') }}?v={{ cache_bust }}"></script>
   <style>
     .report-layout { display:flex; flex-direction:column; height:100%; }
     .report-toolbar { display:flex; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
@@ -699,7 +699,7 @@
       const t=document.createElement('div'); t.className='copy-toast';
       t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(err?'#ef4444':'#10b981')+';color:white;padding:12px 24px;border-radius:8px;font-size:14px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
       t.textContent=msg; document.body.appendChild(t);
-      setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),300);},1500);
+      setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),300);},2000);
     }
     function escHtml(s) { if(!s)return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 

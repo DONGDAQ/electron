@@ -16,6 +16,7 @@ from quote_system.feishu_client import FeishuClient, excel_date_serial_to_date
 from quote_system.memoq_html import parse_memoq_html
 from quote_system.save_path_config import get_save_path
 from quote_system.paths import get_quote_history_dir
+from quote_system.utils import calc_billable
 
 SPREADSHEET_TOKEN = "Wup0wnUPIiiIr2k8T23c4zASnjd"
 SHEET_ID = "WmpiFq"
@@ -153,22 +154,6 @@ def load_quoted_names(xlsx_path: Path) -> set[str]:
             names.add(str(v).strip())
     wb.close()
     return names
-
-
-def calc_billable(stats, lang: str = "") -> int:
-    total = 0
-    zero_types = {"x-translated / double context", "repetition", "101%",
-                  "100%", "95%-99%", "context", "exact"}
-    is_en = lang == "英-韩"
-    for row in stats.rows:
-        t = str(row.type).strip().lower() if row.type else ""
-        if t in zero_types or t in ("all",):
-            continue
-        if is_en:
-            total += row.source_non_asian_words or 0
-        else:
-            total += row.source_asian_characters or 0
-    return total
 
 
 def _match_stats_row(stats_rows, template_name: str) -> object | None:

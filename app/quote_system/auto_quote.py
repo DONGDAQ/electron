@@ -15,7 +15,6 @@ from quote_system.feishu_client import (
     excel_date_serial_to_date,
     excel_time_serial_to_time,
 )
-from quote_system.projects import ProjectConfig
 from quote_system.generator import QuoteRequest, generate_quote
 from quote_system.memoq_html import parse_memoq_html
 from quote_system.projects import resolve_project, ProjectConfig
