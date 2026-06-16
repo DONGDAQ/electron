@@ -2308,6 +2308,12 @@ def _settle_generate_zs(module_name, year, month, subdir, multi_month):
         excel_path = mod.generate_settlement_excel(records, year, [month], output_dir)
     else:
         excel_path = mod.generate_settlement_excel(records, year, month, output_dir)
+    invoice_text = _generate_kuro_invoice_text(total_amount)
+    _save_kuro_invoice_request(year, month, subdir, invoice_text)
+    quote_dir = get_quote_history_dir() / "库洛游戏" / subdir
+    _move_settled_quotes(quote_dir, [r['file_name'] for r in records if r.get('file_name')], year, month)
+    _update_zs_status(records)
+    _refresh_report_cache_async()
     return {
         "status": "ok", "count": len(records),
         "total_amount": round(total_amount, 2), "total_words": sum(r.get("word_count", 0) for r in records),
@@ -2320,11 +2326,12 @@ def _settle_preview_mamian(year, month, project_key):
     records = scan_quotes(year, month, project_key)
     total_words = sum(r.get("word_count", 0) for r in records)
     total_amount = sum(r.get("total_price", 0.0) for r in records)
-    return {"count": len(records), "total_words": total_words, "total_amount": round(total_amount, 2)}
+    total_amount_pretax = round(total_amount / 1.06, 2) if total_amount > 0 else 0
+    return {"count": len(records), "total_words": total_words, "total_amount": round(total_amount, 2), "total_amount_pretax": total_amount_pretax}
 
 
 def _settle_generate_mamian(year, month, project_key):
-    from settlement.generate_settlement_mamian import scan_quotes, MamianSettlementGenerator, BILL_CONFIG
+    from settlement.generate_settlement_mamian import scan_quotes, MamianSettlementGenerator, BILL_CONFIG, move_settled
     cfg = BILL_CONFIG.get(project_key, {})
     project_name = cfg.get("project", project_key)
     output_dir = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / project_name
@@ -2338,6 +2345,7 @@ def _settle_generate_mamian(year, month, project_key):
     import argparse
     args = argparse.Namespace(year=year, month=month, project=project_key, dry_run=False)
     path = gen.generate(records, args)
+    move_settled(records, year, month, project_key)
     total_amount = sum(r.get("total_price", 0.0) for r in records)
     total_words = sum(r.get("word_count", 0) for r in records)
     return {
