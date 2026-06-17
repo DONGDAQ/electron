@@ -3316,7 +3316,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
         html += '</div>';
         projects.forEach(function(p) {
           html += '<div class="wb-project-row" id="wb-row-' + p.key + '" style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 18px;font-size:12px;border-bottom:1px solid rgba(0,0,0,.03);">';
-          html += '<input type="checkbox" class="wb-cb" value="' + p.key + '" onchange="handleWbSelectionChange()" checked style="width:13px;height:13px;flex-shrink:0;">';
+          html += '<input type="checkbox" class="wb-cb" value="' + p.key + '" onchange="handleWbSelectionChange()" style="width:13px;height:13px;flex-shrink:0;">';
           html += '<span style="width:75px;flex-shrink:0;">' + escHtml(p.name) + '</span>';
           html += '<span class="wb-row-data" style="color:var(--muted);font-size:11px;width:40px;text-align:right;">-</span>';
           html += '<span class="wb-row-amount" style="width:75px;text-align:right;font-size:11px;color:var(--muted);">-</span>';
@@ -3330,7 +3330,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       document.getElementById('wbCompanyGroups').innerHTML = html;
       document.getElementById('wbTableWrap').style.display = 'block';
       document.getElementById('wbSummary').style.display = 'none';
-      document.getElementById('wbSelectAll').checked = true;
+      document.getElementById('wbSelectAll').checked = false;
       updateWbGenerateBtn();
       lucide.createIcons();
       restoreWbPreviewCache();
@@ -3512,7 +3512,8 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
     function batchWbGenerate() {
       var selected = getWbSelected();
       if (selected.length === 0) { showToast('请选择至少一个项目', true); return; }
-      if (!confirm('确认生成 ' + selected.length + ' 个项目的结算文件？')) return;
+      var names = selected.map(function(s) { var p = WB_PROJECTS.find(function(w) { return w.key === s; }); return p ? p.name : s; });
+      if (!confirm('确认生成以下 ' + selected.length + ' 个项目的结算文件？\n\n' + names.join('、')) return;
       var ym = getWbYearMonth();
       var rate = parseFloat(document.getElementById('wbExchangeRate').value) || 0;
       var btn = document.getElementById('wbGenerateBtn');
