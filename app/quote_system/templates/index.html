@@ -601,7 +601,7 @@
             <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="refreshSettleSidebar()" title="刷新"></i>
           </div>
           <div class="history-content" id="settleHistoryContent">
-            <div style="padding: 16px; text-align: center; color: #9aa8b7; font-size: 12px;">选择年月后加载</div>
+            <div class="placeholder-text">选择年月后加载</div>
           </div>
         </div>
         <div class="panel history-panel" id="wbFileTreePanel" style="display:none;">
@@ -612,7 +612,7 @@
             <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadWbFileTree()" title="刷新"></i>
           </div>
           <div class="history-content" id="wbFileTreeContent">
-            <div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>
+            <div class="placeholder-text">加载中...</div>
           </div>
         </div>
         <div class="panel history-panel" id="zlFileTreePanel" style="display:none;">
@@ -623,7 +623,7 @@
             <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadZlFileTree()" title="刷新"></i>
           </div>
           <div class="history-content" id="zlFileTreeContent">
-            <div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>
+            <div class="placeholder-text">加载中...</div>
           </div>
         </div>
       </div>
@@ -761,7 +761,7 @@
       const languages = Object.keys(prices);
       
       if (languages.length === 0) {
-        fileLanguageConfig.innerHTML = '<p class="hint" style="color: #ef4444;">请先在"编辑语种/单价"中添加语种配置</p>';
+        fileLanguageConfig.innerHTML = '<p class="hint text-danger">请先在"编辑语种/单价"中添加语种配置</p>';
         return;
       }
       
@@ -986,10 +986,13 @@
     function showToast(message, isError = false) {
       const existing = document.querySelector('.copy-toast');
       if (existing) existing.remove();
-      
+
       const toast = document.createElement('div');
       toast.className = 'copy-toast';
-      toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: ' + (isError ? '#ef4444' : '#10b981') + '; color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+      const bgColor = isError
+        ? getComputedStyle(document.documentElement).getPropertyValue('--danger').trim()
+        : getComputedStyle(document.documentElement).getPropertyValue('--success-color').trim();
+      toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: ' + bgColor + '; color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
       toast.textContent = message;
       document.body.appendChild(toast);
       
@@ -1046,7 +1049,7 @@
         .then(data => {
           if (data.status === 'success') {
             if (!data.data || data.data.length === 0) {
-              historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #9aa8b7; font-size: 12px;">暂无报价单历史</div>';
+              historyContent.innerHTML = '<div class="placeholder-text">暂无报价单历史</div>';
               historyCount.textContent = '0';
               return;
             }
@@ -1118,13 +1121,13 @@
             historyCount.textContent = totalCount;
             lucide.createIcons();
           } else {
-            historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 12px;">加载失败</div>';
+            historyContent.innerHTML = '<div class="error-text">加载失败</div>';
             historyCount.textContent = '0';
           }
         })
         .catch(error => {
           console.error('加载报价单历史失败:', error);
-          historyContent.innerHTML = '<div style="padding: 16px; text-align: center; color: #ef4444; font-size: 12px;">加载失败</div>';
+          historyContent.innerHTML = '<div class="error-text">加载失败</div>';
           historyCount.textContent = '0';
         });
     }
@@ -1240,7 +1243,8 @@
 
       const menu = document.createElement('div');
       menu.className = 'context-menu';
-      menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: #1e2937; border: 1px solid #3b4754; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; overflow: hidden;`;
+      const cs = getComputedStyle(document.documentElement);
+menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${cs.getPropertyValue('--panel').trim()}; border: 1px solid ${cs.getPropertyValue('--line').trim()}; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; overflow: hidden;`;
 
       let items;
       if (isFolder) {
@@ -1822,7 +1826,7 @@
           if (data.status === 'success') {
             showToast('报价单已生成！');
             showMessages(
-              '<p>批次 ' + batchNo + ' 报价单已生成: <span onclick="openFileInExcel(\'' + data.output_path.replace(/\\/g, '\\\\') + '\')" style="cursor:pointer;text-decoration:underline;color:#10b981;">' + data.output_name + '</span></p>'
+              '<p>批次 ' + batchNo + ' 报价单已生成: <span onclick="openFileInExcel(\'' + data.output_path.replace(/\\/g, '\\\\') + '\')" style="cursor:pointer;text-decoration:underline;" class="text-success">' + data.output_name + '</span></p>'
               + '<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:200px;overflow-y:auto;margin-top:6px;">' + (data.message || '') + '</pre>',
               'success'
             );
@@ -2779,7 +2783,7 @@
         const resp = await fetch('/api/settlement-files?project=' + encodeURIComponent(projKey) + '&year=' + year + '&month=' + month);
         const result = await resp.json();
         if (result.status !== 'success' || !result.data || result.data.length === 0) {
-          content.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          content.innerHTML = '<div class="placeholder-text">暂无结算文件</div>';
           countEl.textContent = '0';
           return;
         }
@@ -2802,7 +2806,7 @@
         content.innerHTML = html;
         lucide.createIcons();
       } catch(e) {
-        content.innerHTML = '<div style="padding:16px;text-align:center;color:#ef4444;font-size:12px;">加载失败</div>';
+        content.innerHTML = '<div class="error-text">加载失败</div>';
       }
     }
 
@@ -2950,7 +2954,8 @@
       if (existing) existing.remove();
       var menu = document.createElement('div');
       menu.className = 'context-menu';
-      menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background:#1e2937;border:1px solid #3b4754;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;overflow:hidden;';
+      var _cs = getComputedStyle(document.documentElement);
+menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background:' + _cs.getPropertyValue('--panel').trim() + ';border:1px solid ' + _cs.getPropertyValue('--line').trim() + ';border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;overflow:hidden;';
       var items = [
         {label:'打开文件', icon:'file-spreadsheet', action:function(){ openSettleFile(targetPath); }},
         {label:'打开目标文件夹', icon:'folder-open', action:function(){ openFileLocation(targetPath); }},
@@ -3491,7 +3496,7 @@
             return '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;">'
               + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
           }).join('');
-          document.getElementById('wbResults').innerHTML = '<div style="color:#10b981;margin-bottom:6px;">' + key + ' 生成成功</div>' + filesHtml + document.getElementById('wbResults').innerHTML;
+          document.getElementById('wbResults').innerHTML = '<div class="status-success">' + key + ' 生成成功</div>' + filesHtml + document.getElementById('wbResults').innerHTML;
           if (result.table1 || result.table2) showSettleSummary(result.table1, result.table2, 'wbResults');
           showToast(key + ' 结算文件已生成');
           loadWbFileTree();
@@ -3533,7 +3538,7 @@
           var r = data.results[key];
           if (r.status === 'ok') {
             okCount++;
-            html += '<div style="color:#10b981;margin-bottom:2px;">' + key + ' - 成功</div>';
+            html += '<div class="status-success">' + key + ' - 成功</div>';
             (r.files || []).forEach(function(f) {
               html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;margin-left:12px;">'
                 + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
@@ -3545,17 +3550,17 @@
               } else if (v.feishu_mark === 'skipped') {
                 // 不显示
               } else {
-                html += '<div style="color:#f59e0b;font-size:11px;margin-left:12px;margin-top:2px;">⚠ 飞书标记异常: ' + escHtml(v.feishu_mark) + '</div>';
+                html += '<div class="text-warning" style="font-size:11px;margin-left:12px;margin-top:2px;">⚠ 飞书标记异常: ' + escHtml(v.feishu_mark) + '</div>';
               }
             }
           } else if (r.status === 'exists') {
             existsCount++;
-            html += '<div style="color:#f59e0b;margin-bottom:2px;">⚠ ' + key + ' - ' + escHtml(r.message || '已存在') + '</div>';
+            html += '<div class="status-warning">⚠ ' + key + ' - ' + escHtml(r.message || '已存在') + '</div>';
           } else if (r.status === 'empty') {
             html += '<div style="color:var(--muted);margin-bottom:2px;">' + key + ' - ' + (r.message || '没有数据') + '</div>';
           } else {
             errCount++;
-            html += '<div style="color:#ef4444;margin-bottom:2px;">' + key + ' - ' + (r.message || '失败') + '</div>';
+            html += '<div class="status-error">' + key + ' - ' + (r.message || '失败') + '</div>';
           }
         });
         document.getElementById('wbResults').innerHTML = html;
@@ -3572,14 +3577,14 @@
       var ym = getWbYearMonth();
       var treeEl = document.getElementById('wbFileTreeContent');
       if (!treeEl) return;
-      treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>';
+      treeEl.innerHTML = '<div class="placeholder-text">加载中...</div>';
 
       fetch('/api/settlement-workbench/files?year=' + ym.year + '&month=' + ym.month)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.status !== 'success') { treeEl.innerHTML = ''; return; }
         if (!data.tree || data.tree.length === 0) {
-          treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          treeEl.innerHTML = '<div class="placeholder-text">暂无结算文件</div>';
           return;
         }
         var html = '<div style="padding:8px;">';
@@ -3609,7 +3614,7 @@
         html += '</div>';
         treeEl.innerHTML = html;
         lucide.createIcons();
-      }).catch(function() { treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载失败</div>'; });
+      }).catch(function() { treeEl.innerHTML = '<div class="placeholder-text">加载失败</div>'; });
     }
 
     function openWbFile(key) {
@@ -3739,7 +3744,7 @@
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="sparkles" style="width:14px;height:14px;"></i> 生成结算';
         if (data.status !== 'success') { showToast(data.message || '生成失败', true); return; }
-        var html = '<div style="color:#10b981;margin-bottom:4px;">生成成功</div>';
+        var html = '<div class="status-success" style="margin-bottom:4px;">生成成功</div>';
         (data.files || []).forEach(function(f) {
           html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(f.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;">'
             + '<i data-lucide="file-text" style="width:16px;height:16px;"></i> ' + escHtml(f.name) + '</span>';
@@ -3756,12 +3761,12 @@
       var ym = getZlYearMonth();
       var treeEl = document.getElementById('zlFileTreeContent');
       if (!treeEl) return;
-      treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载中...</div>';
+      treeEl.innerHTML = '<div class="placeholder-text">加载中...</div>';
       fetch('/api/settlement-files?project=zulong&year=' + ym.year + '&month=' + ym.month)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.status !== 'success' || !data.data || data.data.length === 0) {
-          treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">暂无结算文件</div>';
+          treeEl.innerHTML = '<div class="placeholder-text">暂无结算文件</div>';
           return;
         }
         var html = '';
@@ -3784,7 +3789,7 @@
         });
         treeEl.innerHTML = html;
         lucide.createIcons();
-      }).catch(function() { treeEl.innerHTML = '<div style="padding:16px;text-align:center;color:#9aa8b7;font-size:12px;">加载失败</div>'; });
+      }).catch(function() { treeEl.innerHTML = '<div class="placeholder-text">加载失败</div>'; });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
