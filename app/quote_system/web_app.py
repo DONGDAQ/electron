@@ -662,6 +662,7 @@ def diezhi_generate_quote() -> Response:
 @app.post("/tk-fill/start")
 def start_tk_fill() -> Response:
     """启动 TK 自动填表：API 方式下载 N 列 HTML → 解析 → 填写 O-Y。"""
+    print(f"[TRACE] start_tk_fill 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
     global TK_FILL_THREAD, TK_FILL_RUNNING
     try:
         if TK_FILL_RUNNING:
@@ -750,6 +751,7 @@ def tk_fill_status() -> Response:
 @app.post("/fill-4399/start")
 def start_fill_4399() -> Response:
     """启动 4399 填表：下载 G 列 HTML → 解析 → 填写 K/L/M 列。"""
+    print(f"[TRACE] start_fill_4399 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
     global FILL_4399_PROCESS
     try:
         if FILL_4399_PROCESS and FILL_4399_PROCESS.poll() is None:
@@ -1087,6 +1089,7 @@ def mamian_bill_preview() -> Response:
 @app.post("/api/settlement/mamian/generate-bill")
 def mamian_generate_bill() -> Response:
     """生成 Bilibili 项目月度账单"""
+    print(f"[TRACE] mamian_generate_bill 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
     from settlement.generate_settlement_mamian import (
         scan_quotes, MamianSettlementGenerator, _get_bill_config, move_settled,
     )
@@ -2110,6 +2113,7 @@ def _execute_single_auto_quote(project_key: str):
 
 @app.post("/api/quote-all")
 def start_quote_all() -> Response:
+    print(f"[TRACE] start_quote_all 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
     data = request.get_json() or {}
     selected = data.get("projects", [])
     if not selected:
@@ -2485,6 +2489,7 @@ def settlement_workbench_preview() -> Response:
 @api_handler
 @app.post("/api/settlement-workbench/generate")
 def settlement_workbench_generate() -> Response:
+    print(f"[TRACE] settlement_workbench_generate 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
