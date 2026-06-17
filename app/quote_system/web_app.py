@@ -44,6 +44,25 @@ TK_FILL_THREAD: threading.Thread | None = None
 TK_FILL_RUNNING: bool = False
 FILL_4399_PROCESS: subprocess.Popen | None = None
 LOCAL_ONLY_ENDPOINTS = {"/delete-quote", "/open-file", "/open-folder"}
+
+_OPERATION_LOG = OUTPUTS_DIR / "logs" / "operations.log"
+
+
+def _log_operation(action: str, req) -> None:
+    """持久化记录操作日志，用于追踪自动触发问题"""
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    ip = req.remote_addr or "unknown"
+    ref = req.referrer or "none"
+    ua = str(req.user_agent)[:80]
+    line = f"[{ts}] {action} | ip={ip} | ref={ref} | ua={ua}\n"
+    try:
+        _OPERATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(_OPERATION_LOG, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    print(f"[TRACE] {line.strip()}")
 DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
 
 
@@ -468,41 +487,43 @@ def auto_quote_logs() -> Response:
         except Exception:
             pass
 
-    # TK 填表记录
+    # TK 填表记录（只显示最近 7 天）
     tk_log = OUTPUTS_DIR / "logs" / "tk_fill.log"
     if tk_log.exists():
         try:
-            content = tk_log.read_text(encoding="utf-8", errors="replace")
             mtime = datetime.fromtimestamp(tk_log.stat().st_mtime)
-            done_match = None
-            for line in content.splitlines():
-                if line.startswith("Done:") or "完成:" in line:
-                    done_match = line
-            logs.append({
-                "project": "tk",
-                "timestamp": mtime.isoformat(),
-                "status": "success" if done_match else "error",
-                "log_file": str(tk_log),
-                "summary": done_match or content.strip()[-200:] if content.strip() else "无输出",
-                "type": "manual",
-            })
+            if (datetime.now() - mtime).days <= 7:
+                content = tk_log.read_text(encoding="utf-8", errors="replace")
+                done_match = None
+                for line in content.splitlines():
+                    if line.startswith("Done:") or "完成:" in line:
+                        done_match = line
+                logs.append({
+                    "project": "tk",
+                    "timestamp": mtime.isoformat(),
+                    "status": "success" if done_match else "error",
+                    "log_file": str(tk_log),
+                    "summary": done_match or content.strip()[-200:] if content.strip() else "无输出",
+                    "type": "manual",
+                })
         except Exception:
             pass
 
-    # 4399 填表记录
+    # 4399 填表记录（只显示最近 7 天）
     fill_4399_log = OUTPUTS_DIR / "logs" / "4399_fill.log"
     if fill_4399_log.exists():
         try:
-            content = fill_4399_log.read_text(encoding="utf-8", errors="replace")
             mtime = datetime.fromtimestamp(fill_4399_log.stat().st_mtime)
-            logs.append({
-                "project": "4399",
-                "timestamp": mtime.isoformat(),
-                "status": "success",
-                "log_file": str(fill_4399_log),
-                "summary": content.strip()[-200:] if content.strip() else "无输出",
-                "type": "manual",
-            })
+            if (datetime.now() - mtime).days <= 7:
+                content = fill_4399_log.read_text(encoding="utf-8", errors="replace")
+                logs.append({
+                    "project": "4399",
+                    "timestamp": mtime.isoformat(),
+                    "status": "success",
+                    "log_file": str(fill_4399_log),
+                    "summary": content.strip()[-200:] if content.strip() else "无输出",
+                    "type": "manual",
+                })
         except Exception:
             pass
 
@@ -662,7 +683,7 @@ def diezhi_generate_quote() -> Response:
 @app.post("/tk-fill/start")
 def start_tk_fill() -> Response:
     """启动 TK 自动填表：API 方式下载 N 列 HTML → 解析 → 填写 O-Y。"""
-    print(f"[TRACE] start_tk_fill 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
+    _log_operation("tk_fill_start", request)
     global TK_FILL_THREAD, TK_FILL_RUNNING
     try:
         if TK_FILL_RUNNING:
@@ -751,7 +772,7 @@ def tk_fill_status() -> Response:
 @app.post("/fill-4399/start")
 def start_fill_4399() -> Response:
     """启动 4399 填表：下载 G 列 HTML → 解析 → 填写 K/L/M 列。"""
-    print(f"[TRACE] start_fill_4399 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
+    _log_operation("fill_4399_start", request)
     global FILL_4399_PROCESS
     try:
         if FILL_4399_PROCESS and FILL_4399_PROCESS.poll() is None:
@@ -1089,7 +1110,7 @@ def mamian_bill_preview() -> Response:
 @app.post("/api/settlement/mamian/generate-bill")
 def mamian_generate_bill() -> Response:
     """生成 Bilibili 项目月度账单"""
-    print(f"[TRACE] mamian_generate_bill 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
+    _log_operation("mamian_generate_bill", request)
     from settlement.generate_settlement_mamian import (
         scan_quotes, MamianSettlementGenerator, _get_bill_config, move_settled,
     )
@@ -2113,7 +2134,7 @@ def _execute_single_auto_quote(project_key: str):
 
 @app.post("/api/quote-all")
 def start_quote_all() -> Response:
-    print(f"[TRACE] start_quote_all 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
+    _log_operation("quote_all", request)
     data = request.get_json() or {}
     selected = data.get("projects", [])
     if not selected:
@@ -2489,7 +2510,7 @@ def settlement_workbench_preview() -> Response:
 @api_handler
 @app.post("/api/settlement-workbench/generate")
 def settlement_workbench_generate() -> Response:
-    print(f"[TRACE] settlement_workbench_generate 被调用, 来源: {request.remote_addr}, referer: {request.referrer}")
+    _log_operation("settlement_workbench_generate", request)
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
