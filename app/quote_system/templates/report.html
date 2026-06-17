@@ -128,9 +128,9 @@
     .log-header .log-summary { flex:1; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0 8px; }
     .log-header .log-duration { font-size:11px; color:var(--muted); flex-shrink:0; }
     .log-header .log-toggle { font-size:11px; color:var(--accent); flex-shrink:0; }
-    .log-body { display:none; border-top:1px solid var(--line); background:#1a1f2e; }
+    .log-body { display:none; border-top:1px solid var(--line); background:var(--bg); }
     .log-body.open { display:block; }
-    .log-body pre { margin:0; padding:14px; font-size:12px; line-height:1.6; color:#e2e8f0; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto; }
+    .log-body pre { margin:0; padding:14px; font-size:12px; line-height:1.6; color:var(--text-primary); white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto; }
 
     /* 报价记录表格 */
     .records-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
@@ -477,7 +477,7 @@
             datalabels: {
               anchor: 'end',
               align: 'top',
-              color: '#e2e8f0',
+              color: getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#e2e8f0',
               font: { size: 11, weight: '600' },
               formatter: v => '¥' + v.toLocaleString(),
               offset: 4,
@@ -490,7 +490,7 @@
             },
             x: {
               ticks: {
-                color: '#94a3b8',
+                color: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#94a3b8',
                 font: { size: 11 },
                 maxRotation: 45,
               },

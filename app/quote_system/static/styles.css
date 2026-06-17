@@ -1,80 +1,150 @@
-/* ===== Dark Theme (default) ===== */
+/* ===== Dark Theme (default) — StyleSeed Linear-inspired ===== */
 :root {
+  /* Background levels (brightness gap ≥12 steps) */
   --bg: #0f172a;
   --panel: #1e293b;
   --panel-border: rgba(255,255,255,.06);
-  --ink: #f1f5f9;
-  --muted: #94a3b8;
-  --line: rgba(255,255,255,.08);
-  --accent: #3b82f6;
-  --accent-hover: #60a5fa;
-  --accent-soft: rgba(59,130,246,.15);
-  --danger: #ef4444;
-  --danger-soft: rgba(239,68,68,.15);
-  --shadow: 0 2px 8px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.03);
-  --radius: 10px;
-  --font: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --bg-toolbar: #1e293b;
-  --border: rgba(255,255,255,.08);
   --bg-card: #0f172a;
   --sidebar-bg: #162032;
   --sidebar-border: rgba(255,255,255,.06);
+
+  /* Text hierarchy (5 levels — StyleSeed Rule 3) */
+  --ink: #f1f5f9;          /* Strong: headings, key numbers */
+  --text-primary: #e2e8f0;  /* Primary: section titles, metrics */
+  --muted: #94a3b8;         /* Secondary: labels, captions */
+  --text-tertiary: #64748b; /* Tertiary: dates, descriptions */
+  --text-disabled: #475569; /* Disabled: inactive elements */
+
+  /* Brand / Accent (brightened for dark mode — StyleSeed Rule 45) */
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-soft: rgba(99,102,241,.15);
+
+  /* Status colors (small areas only — StyleSeed Rule 1) */
+  --danger: #ef4444;
+  --danger-soft: rgba(239,68,68,.15);
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+
+  /* Borders & Lines (StyleSeed Rule 45: border replaces shadow in dark) */
+  --line: rgba(255,255,255,.08);
+  --border: rgba(255,255,255,.08);
+
+  /* Shadows (minimal in dark mode — StyleSeed Rule 12) */
+  --shadow: none;
+
+  /* Radius */
+  --radius: 10px;
+
+  /* Typography */
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Navigation */
   --sidebar-heading: #f1f5f9;
   --nav-color: #cbd5e1;
   --nav-hover: rgba(255,255,255,.06);
   --company-color: #64748b;
+
+  /* Inputs */
   --input-bg: rgba(255,255,255,.05);
+
+  /* File icons */
   --file-icon: #fbbf24;
   --file-date: #64748b;
+
+  /* Upload */
   --upload-dash: #475569;
   --upload-bg: rgba(255,255,255,.03);
+
+  /* Tables */
   --table-th-bg: rgba(255,255,255,.03);
   --table-td-border: rgba(255,255,255,.04);
+
+  /* Result cards */
   --result-card-bg: rgba(255,255,255,.04);
+
+  /* File type icons */
   --excel-icon: #34d399;
   --word-icon: #60a5fa;
-  --success-color: #10b981;
+
+  /* Modal */
   --modal-overlay: rgba(0,0,0,.6);
+
+  /* Scrollbar */
   --scrollbar-thumb: rgba(255,255,255,.15);
   --scrollbar-hover: rgba(255,255,255,.25);
 }
 
-/* ===== Light Theme ===== */
+/* ===== Light Theme — StyleSeed-inspired ===== */
 .light-theme {
+  /* Background levels */
   --bg: #f2f2f2;
   --panel: rgba(255,255,255,.85);
   --panel-border: rgba(0,0,0,.06);
-  --ink: #1a1a1a;
-  --muted: #707070;
-  --line: rgba(0,0,0,.08);
-  --accent: #0067c0;
-  --accent-hover: #005a9e;
-  --accent-soft: rgba(0,103,192,.08);
-  --danger: #b42318;
-  --danger-soft: rgba(180,35,24,.08);
-  --shadow: 0 2px 8px rgba(0,0,0,.06), 0 0 0 1px rgba(0,0,0,.02);
-  --radius: 8px;
   --bg-toolbar: rgba(255,255,255,.85);
-  --border: rgba(0,0,0,.08);
   --bg-card: rgba(255,255,255,.5);
   --sidebar-bg: rgba(232,240,254,.65);
   --sidebar-border: rgba(0,103,192,.1);
+
+  /* Text hierarchy (5 levels) */
+  --ink: #1a1a1a;
+  --text-primary: #2a2a2a;
+  --muted: #707070;
+  --text-tertiary: #9ca3af;
+  --text-disabled: #b0b8c4;
+
+  /* Brand */
+  --accent: #0067c0;
+  --accent-hover: #005a9e;
+  --accent-soft: rgba(0,103,192,.08);
+
+  /* Status */
+  --danger: #b42318;
+  --danger-soft: rgba(180,35,24,.08);
+  --success-color: #0d9e6b;
+  --warning-color: #d4a026;
+
+  /* Borders & Shadows (light mode uses shadows — StyleSeed Rule 12) */
+  --line: rgba(0,0,0,.08);
+  --border: rgba(0,0,0,.08);
+  --shadow: 0 1px 3px rgba(0,0,0,.04);
+
+  --radius: 8px;
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Navigation */
   --sidebar-heading: #1a3a5c;
   --nav-color: #2a4058;
   --nav-hover: rgba(0,103,192,.08);
   --company-color: #6a7f9e;
+
+  /* Inputs */
   --input-bg: rgba(255,255,255,.5);
+
+  /* File icons */
   --file-icon: #d4a026;
   --file-date: #9ca3af;
+
+  /* Upload */
   --upload-dash: #b0b8c4;
   --upload-bg: rgba(255,255,255,.5);
+
+  /* Tables */
   --table-th-bg: rgba(0,0,0,.02);
   --table-td-border: rgba(0,0,0,.04);
+
+  /* Result cards */
   --result-card-bg: rgba(0,0,0,.02);
+
+  /* File type icons */
   --excel-icon: #217346;
   --word-icon: #185abd;
-  --success-color: #0d9e6b;
+
+  /* Modal */
   --modal-overlay: rgba(0,0,0,.5);
+
+  /* Scrollbar */
   --scrollbar-thumb: rgba(0,0,0,.2);
   --scrollbar-hover: rgba(0,0,0,.35);
 }
@@ -458,7 +528,6 @@ button, .ghost-button, .icon-button {
   border-radius: var(--radius);
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  box-shadow: var(--shadow);
   font-size: 13px;
   margin-top: 12px;
 }
@@ -471,12 +540,11 @@ button, .ghost-button, .icon-button {
   border-left: 3px solid var(--danger);
 }
 
-/* ===== Panels ===== */
+/* ===== Panels (StyleSeed: border replaces shadow in dark mode) ===== */
 .panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
 }
 
 .form-panel {
