@@ -162,12 +162,9 @@ def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, it
     quote_file = result.final_path
     if result.output_path != result.final_path and result.output_path.exists():
         result.output_path.unlink()
-    print(f"  上传报价单到飞书云盘...")
-    file_token = client.upload_to_drive(quote_file)
-    client.set_file_public(file_token)
 
-    print(f"  回填F列（报价单链接）...")
-    _write_quote_link(client, row_num, file_token, quote_file.name)
+    print(f"  回填F列（报价单文件名）...")
+    client.write_cell(row_num, COL_QUOTE_NAME, quote_file.name)
 
     print(f"  回填G列（报价字数）...")
     client.write_cell(row_num, COL_WORDS, round(billable, 1))
@@ -200,24 +197,6 @@ def _calc_billable_words(stats, languages: list[str]) -> float:
         return total_chars
     return qw
 
-
-def _write_quote_link(client: FeishuClient, row: int, file_token: str, file_name: str):
-    from quote_system.feishu_client import TENANT_DOMAIN, _col_letter
-    file_url = f"https://{TENANT_DOMAIN}/file/{file_token}"
-    formula = f'=HYPERLINK("{file_url}", "{file_name}")'
-    body = {
-        "valueRange": {
-            "range": f"{client.sheet_id}!{_col_letter(COL_QUOTE_NAME)}{row}:{_col_letter(COL_QUOTE_NAME)}{row}",
-            "values": [[{"type": "formula", "text": formula}]],
-        }
-    }
-    result = client._api(
-        "PUT",
-        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{client.spreadsheet_token}/values",
-        body,
-    )
-    if result.get("code") != 0:
-        raise RuntimeError(f"写入报价单链接失败: {result}")
 
 
 
