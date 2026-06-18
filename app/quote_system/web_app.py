@@ -124,8 +124,13 @@ DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
 
 
 def _refresh_report_cache_async() -> None:
-    """后台刷新报告缓存"""
+    """后台刷新报告缓存（含TK数据同步）"""
     def _do():
+        try:
+            from .auto_fill_tk import sync_tk_data
+            sync_tk_data()
+        except Exception:
+            pass
         try:
             from .report_cache import sync_report_cache
             sync_report_cache()
