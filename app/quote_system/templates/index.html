@@ -3513,7 +3513,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       var selected = getWbSelected();
       if (selected.length === 0) { showToast('请选择至少一个项目', true); return; }
       var names = selected.map(function(s) { var p = WB_PROJECTS.find(function(w) { return w.key === s; }); return p ? p.name : s; });
-      if (!confirm('确认生成以下 ' + selected.length + ' 个项目的结算文件？\n\n' + names.join('、')) return;
+      if (!confirm('确认生成以下 ' + selected.length + ' 个项目的结算文件？\n\n' + names.join('、'))) return;
       var ym = getWbYearMonth();
       var rate = parseFloat(document.getElementById('wbExchangeRate').value) || 0;
       var btn = document.getElementById('wbGenerateBtn');

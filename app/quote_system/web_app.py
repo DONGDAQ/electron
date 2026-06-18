@@ -63,6 +63,62 @@ def _log_operation(action: str, req) -> None:
     except Exception:
         pass
     print(f"[TRACE] {line.strip()}")
+
+
+def _detect_trigger_type(req) -> str:
+    """根据 User-Agent 推断触发来源。
+
+    Werkzeug 是 Flask test client 的默认 UA，标记为 "test"；
+    其他（浏览器/Electron）标记为 "manual"。
+    用于区分报告页里"手动"记录的真实来源，避免把 pytest 触发的误显示为手动操作。
+    """
+    ua = str(req.user_agent or "")
+    if "werkzeug" in ua.lower():
+        return "test"
+    return "manual"
+
+
+def _write_fill_meta(log_dir: Path, project: str, req) -> str:
+    """在启动填表前写入 meta 文件，记录触发来源。返回 trigger_type。"""
+    trigger_type = _detect_trigger_type(req)
+    meta_path = log_dir / f"{project}_fill.meta.json"
+    try:
+        from datetime import datetime as _dt
+        meta = {"type": trigger_type, "timestamp": _dt.now().isoformat()}
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return trigger_type
+
+
+def _read_fill_meta(project: str) -> str:
+    """读取填表 meta 文件，返回 trigger_type（默认 manual）。"""
+    meta_path = OUTPUTS_DIR / "logs" / f"{project}_fill.meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            return meta.get("type", "manual")
+        except Exception:
+            pass
+    return "manual"
+
+
+def _parse_fill_summary(content: str, label: str) -> str:
+    """从填表日志中提取一行关键摘要，与自动报价格式对齐。"""
+    lines = content.strip().splitlines()
+    for line in reversed(lines):
+        if "完成:" in line or line.startswith("Done:"):
+            s = line.strip().lstrip("\n")
+            if "0 条已填写" in s and "0 条跳过" in s and "0 条失败" in s:
+                return "没有待处理的需求"
+            return s
+    for line in lines:
+        if "没有找到" in line or "No rows to process" in line:
+            return "没有待处理的需求"
+    for line in lines:
+        if "Found" in line and "rows to process" in line:
+            return line.strip()
+    return f"{label} 填表已执行" if lines else "无输出"
 DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
 
 
@@ -101,12 +157,9 @@ def handle_bad_request(exc):
 
 
 _BLOCKED_PATHS = [
-    re.compile(r'^[A-Za-z]:/test$', re.IGNORECASE),
-    re.compile(r'^[A-Za-z]:/tmp$', re.IGNORECASE),
-    re.compile(r'^[A-Za-z]:\\test$', re.IGNORECASE),
-    re.compile(r'^[A-Za-z]:\\tmp$', re.IGNORECASE),
-    re.compile(r'^[A-Za-z]:/测试$'),
-    re.compile(r'^[A-Za-z]:\\测试$'),
+    re.compile(r'^[A-Za-z]:[/\\]test(?:[/\\].*)?$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:[/\\]tmp(?:[/\\].*)?$', re.IGNORECASE),
+    re.compile(r'^[A-Za-z]:[/\\]测试(?:[/\\].*)?$'),
 ]
 
 
@@ -253,6 +306,15 @@ def save_save_path_endpoint() -> Response:
     try:
         project_key = request.form["project_key"]
         save_path = request.form["save_path"]
+
+        # ---- 校验：空路径允许（用于清除），非空路径拒绝测试占位 ----
+        if save_path and save_path.strip():
+            for pat in _BLOCKED_PATHS:
+                if pat.match(save_path.strip()):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"路径 '{save_path}' 疑似测试占位路径，已拒绝保存。请填写正式路径。"
+                    }), 400
 
         set_save_path(project_key, save_path)
         return {"status": "success"}
@@ -473,7 +535,6 @@ def project_detail() -> Response:
 @app.get("/api/auto-quote-logs")
 def auto_quote_logs() -> Response:
     """返回所有执行记录（自动报价 + 手动填表）"""
-    pass
     logs = []
 
     # 自动报价记录
@@ -494,17 +555,15 @@ def auto_quote_logs() -> Response:
             mtime = datetime.fromtimestamp(tk_log.stat().st_mtime)
             if (datetime.now() - mtime).days <= 7:
                 content = tk_log.read_text(encoding="utf-8", errors="replace")
-                done_match = None
-                for line in content.splitlines():
-                    if line.startswith("Done:") or "完成:" in line:
-                        done_match = line
+                summary = _parse_fill_summary(content, "TK")
+                has_error = "Traceback" in content or "Error" in content
                 logs.append({
                     "project": "tk",
                     "timestamp": mtime.isoformat(),
-                    "status": "success" if done_match else "error",
+                    "status": "error" if has_error else "success",
                     "log_file": str(tk_log),
-                    "summary": done_match or content.strip()[-200:] if content.strip() else "无输出",
-                    "type": "manual",
+                    "summary": summary,
+                    "type": _read_fill_meta("tk"),
                 })
         except Exception:
             pass
@@ -516,13 +575,15 @@ def auto_quote_logs() -> Response:
             mtime = datetime.fromtimestamp(fill_4399_log.stat().st_mtime)
             if (datetime.now() - mtime).days <= 7:
                 content = fill_4399_log.read_text(encoding="utf-8", errors="replace")
+                summary = _parse_fill_summary(content, "4399")
+                has_error = "Traceback" in content or "Error" in content
                 logs.append({
                     "project": "4399",
                     "timestamp": mtime.isoformat(),
-                    "status": "success",
+                    "status": "error" if has_error else "success",
                     "log_file": str(fill_4399_log),
-                    "summary": content.strip()[-200:] if content.strip() else "无输出",
-                    "type": "manual",
+                    "summary": summary,
+                    "type": _read_fill_meta("4399"),
                 })
         except Exception:
             pass
@@ -705,38 +766,31 @@ def start_tk_fill() -> Response:
         log_dir = OUTPUTS_DIR / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "tk_fill.log"
+        _write_fill_meta(log_dir, "tk", request)  # 记录触发来源（test/manual）
 
         def _run_tk_fill() -> None:
             global TK_FILL_RUNNING
-            import argparse, io as _io
+            import argparse, io as _io, contextlib
             from .auto_fill_tk import build_parser, run, configure_output
 
-            # Redirect stdout/stderr to log file
+            # 用 contextlib 重定向 stdout/stderr，不再修改全局 sys.stdout
+            # 避免影响 Flask 其他线程的输出
             log_file = open(log_path, "w", encoding="utf-8")
-            real_stdout, real_stderr = sys.stdout, sys.stderr
             try:
-                sys.stdout = sys.stderr = log_file
+                with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                    configure_output()
+                    parser = build_parser()
+                    ns = argparse.Namespace(
+                        dry_run=dry_run,
+                        tail=tail,
+                        blank_stop=30,
+                        max_rows=2000,
+                        download_dir=str(Path(__file__).resolve().parent.parent / "outputs" / "tk_html"),
+                    )
+                    run(ns)
             except Exception:
-                log_file.close()
-                raise
-
-            try:
-                configure_output()
-                parser = build_parser()
-                ns = argparse.Namespace(
-                    dry_run=dry_run,
-                    tail=tail,
-                    blank_stop=30,
-                    max_rows=2000,
-                    download_dir=str(Path(__file__).resolve().parent.parent / "outputs" / "tk_html"),
-                )
-                run(ns)
-            except Exception as exc:
-                pass
                 traceback.print_exc()
             finally:
-                sys.stdout = real_stdout
-                sys.stderr = real_stderr
                 log_file.close()
                 TK_FILL_RUNNING = False
 
@@ -792,6 +846,7 @@ def start_fill_4399() -> Response:
         log_dir = OUTPUTS_DIR / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "4399_fill.log"
+        _write_fill_meta(log_dir, "4399", request)  # 记录触发来源（test/manual）
         log_file = log_path.open("w", encoding="utf-8")
         try:
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -1118,17 +1173,26 @@ def mamian_generate_bill() -> Response:
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     project_key = data.get("project", "maniang")
+    skip_move = bool(data.get("skip_move", False))
     validate_year_month(year, month)
+
+    # 重复结算检查：若当月结算文件已存在，直接返回，避免重复生成 + 重复移动报价单
+    cfg = _get_bill_config(project_key)
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / cfg["project"]
+    if _check_settlement_exists(output_dir, "大连"):
+        return jsonify({
+            "status": "exists",
+            "message": f"{cfg['project_full_name']}当月已有结算文件，请检查是否重复结算",
+        }), 409
 
     records = scan_quotes(year, month, project_key)
     if not records:
-        cfg = _get_bill_config(project_key)
         return jsonify({"status": "error", "message": f"{year}年{month}月没有未结算的 {cfg['project_full_name']} 交付记录"}), 404
 
     gen = MamianSettlementGenerator(year, month, project_key)
     output_path = gen.generate(records, None)
 
-    move_settled(records, year, month, project_key)
+    move_settled(records, year, month, project_key, skip_move=skip_move)
 
     # 开票金额 = 所有报价单合计行 K 列的总和
     total_amount = sum(r["total_price"] for r in records)
@@ -2355,7 +2419,7 @@ def _settle_preview_mamian(year, month, project_key):
     return {"count": len(records), "total_words": total_words, "total_amount": round(total_amount, 2), "total_amount_pretax": total_amount_pretax}
 
 
-def _settle_generate_mamian(year, month, project_key):
+def _settle_generate_mamian(year, month, project_key, skip_move=False):
     from settlement.generate_settlement_mamian import scan_quotes, MamianSettlementGenerator, BILL_CONFIG, move_settled
     cfg = BILL_CONFIG.get(project_key, {})
     project_name = cfg.get("project", project_key)
@@ -2370,7 +2434,7 @@ def _settle_generate_mamian(year, month, project_key):
     import argparse
     args = argparse.Namespace(year=year, month=month, project=project_key, dry_run=False)
     path = gen.generate(records, args)
-    move_settled(records, year, month, project_key)
+    move_settled(records, year, month, project_key, skip_move=skip_move)
     total_amount = sum(r.get("total_price", 0.0) for r in records)
     total_words = sum(r.get("word_count", 0) for r in records)
     return {
@@ -2516,6 +2580,7 @@ def settlement_workbench_generate() -> Response:
     month = int(data.get("month", 0))
     selected = data.get("projects", [])
     exchange_rate = data.get("exchange_rate")
+    skip_move = bool(data.get("skip_move", False))
     validate_year_month(year, month)
     if not selected:
         return jsonify({"status": "error", "message": "请选择至少一个项目"}), 400
@@ -2544,14 +2609,13 @@ def settlement_workbench_generate() -> Response:
             elif proj["type"] == "zhan_shuang_faxing":
                 results[key] = _settle_generate_zs(proj["module"], year, month, proj["subdir"], True)
             elif proj["type"] == "mamian":
-                results[key] = _settle_generate_mamian(year, month, proj["project_key"])
+                results[key] = _settle_generate_mamian(year, month, proj["project_key"], skip_move=skip_move)
             elif proj["type"] == "4399":
                 rate = float(exchange_rate) if exchange_rate else 0
                 results[key] = _settle_generate_4399(year, month, rate)
             elif proj["type"] == "tk":
                 results[key] = _settle_generate_tk(year, month)
         except Exception as e:
-            pass
             results[key] = {"status": "error", "message": f"{type(e).__name__}: {str(e)}"}
 
     _refresh_report_cache_async()

@@ -201,8 +201,17 @@ def scan_quotes(target_year: int, target_month: int, project_key: str = "maniang
     return results
 
 
-def move_settled(records: list[dict], year: int, month: int, project_key: str = "maniang") -> Path:
-    """将已结算的报价单文件移入 已结算/年月/ 目录。"""
+def move_settled(records: list[dict], year: int, month: int, project_key: str = "maniang", skip_move: bool = False) -> Path | None:
+    """将已结算的报价单文件移入 已结算/年月/ 目录。
+
+    Args:
+        skip_move: 若为 True，则只返回目标目录而不实际移动文件。
+                   用于"只生成结算单、不移动报价单"的场景。
+    Returns:
+        已结算目录路径；skip_move=True 时返回 None。
+    """
+    if skip_move:
+        return None
     cfg = _get_bill_config(project_key)
     qdir = get_quote_history_dir() / SETTLEMENT_COMPANY / cfg["quote_history_dir"]
     settled_dir = qdir / "已结算" / f"{year}年{month}月"
@@ -251,8 +260,11 @@ def main():
     output = gen.generate(records, args)
     print(f"\n账单已生成: {output}")
 
-    settled_dir = move_settled(records, year, month, pk)
-    print(f"已移入 {settled_dir}")
+    settled_dir = move_settled(records, year, month, pk, skip_move=args.dry_run)
+    if settled_dir is not None:
+        print(f"已移入 {settled_dir}")
+    else:
+        print("[dry-run] 未移动报价单")
 
 
 class MamianSettlementGenerator:

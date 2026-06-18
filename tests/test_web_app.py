@@ -178,12 +178,28 @@ class TestSaveProjectConfig:
 
 
 class TestSaveSavePath:
-    def test_should_accept_valid_data(self, client):
+    def test_should_accept_valid_data(self, client, monkeypatch, tmp_path):
+        # 隔离：把配置文件指向临时目录，防止污染真实 save_path_config.json
+        import quote_system.save_path_config as spc
+        fake_config = tmp_path / "save_path_config.json"
+        monkeypatch.setattr(spc, "CONFIG_PATH", fake_config)
+        monkeypatch.setattr("quote_system.web_app.get_save_path", lambda k: None)
+        resp = client.post("/save-save-path", data={
+            "project_key": "maniang",
+            "save_path": r"D:\正式路径\报价单",
+        })
+        assert resp.status_code == 200
+
+    def test_should_reject_test_placeholder_path(self, client, monkeypatch, tmp_path):
+        # 校验：D:\test\path 等测试占位路径应被拒绝
+        import quote_system.save_path_config as spc
+        fake_config = tmp_path / "save_path_config.json"
+        monkeypatch.setattr(spc, "CONFIG_PATH", fake_config)
         resp = client.post("/save-save-path", data={
             "project_key": "maniang",
             "save_path": r"D:\test\path",
         })
-        assert resp.status_code == 200
+        assert resp.status_code == 400
 
     def test_should_fail_missing_data(self, client):
         resp = client.post("/save-save-path", data={})
@@ -321,11 +337,15 @@ class TestSettlementGenerate:
                           content_type="application/json")
         assert resp.status_code == 400
 
-    def test_mamian_generate_with_no_data(self, client):
+    def test_mamian_generate_with_no_data(self, client, monkeypatch):
+        # 隔离真实副作用：mock 掉结算存在性检查和文件扫描，
+        # 让端点稳定走"无数据 → 404"路径，不触达网络驱动器、不移动文件。
+        monkeypatch.setattr("quote_system.web_app._check_settlement_exists", lambda *a, **kw: False)
+        monkeypatch.setattr("settlement.generate_settlement_mamian.scan_quotes", lambda *a, **kw: [])
         resp = client.post("/api/settlement/mamian/generate-bill",
                           data=json.dumps({"year": 2026, "month": 6, "project": "maniang"}),
                           content_type="application/json")
-        assert resp.status_code in (200, 404)
+        assert resp.status_code == 404
 
     def test_general_generate_with_invalid_year(self, client):
         resp = client.post("/api/settlement/generate",
@@ -337,15 +357,39 @@ class TestSettlementGenerate:
 # ========== TK 端点测试 ==========
 
 class TestTkEndpoints:
-    def test_start_with_no_data(self, client):
+    def test_start_with_no_data(self, client, monkeypatch, tmp_path):
+        # 隔离：日志写到临时目录，run 函数 mock 掉（防止调 lark-cli + 网络请求）
+        from quote_system import web_app
+        monkeypatch.setattr("quote_system.web_app.OUTPUTS_DIR", tmp_path)
+        monkeypatch.setattr("quote_system.auto_fill_tk.run", lambda ns: None)
         resp = client.post("/tk-fill/start", data={})
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data["status"] == "success"
+        # 等待后台线程结束，防止 monkeypatch 撤销后线程才执行真实 run
+        if web_app.TK_FILL_THREAD is not None:
+            web_app.TK_FILL_THREAD.join(timeout=5)
 
 
 class TestFill4399:
-    def test_start_with_no_data(self, client):
+    def test_start_with_no_data(self, client, monkeypatch, tmp_path):
+        # 隔离：日志写到临时目录，subprocess.Popen mock 掉（防止启动真实子进程）
+        from unittest.mock import MagicMock
+        monkeypatch.setattr("quote_system.web_app.OUTPUTS_DIR", tmp_path)
+
+        def _fake_popen(*args, **kwargs):
+            # 关闭 log_file 句柄，防止泄漏（真实子进程会持有 stdout，mock 需手动关）
+            stdout = kwargs.get("stdout")
+            if stdout is not None:
+                try:
+                    stdout.close()
+                except Exception:
+                    pass
+            proc = MagicMock()
+            proc.poll.return_value = None
+            return proc
+
+        monkeypatch.setattr("quote_system.web_app.subprocess.Popen", _fake_popen)
         resp = client.post("/fill-4399/start", data={})
         assert resp.status_code == 200
         data = json.loads(resp.data)
