@@ -631,6 +631,7 @@ def auto_quote() -> Response:
             auto_quote_run(project_key)
         output = buffer.getvalue()
         _save_auto_quote_log(project_key, output, "success")
+        _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
         pass
@@ -647,6 +648,7 @@ def zhan_shuang_auto_quote() -> Response:
             zhan_shuang_auto_quote_run()
         output = buffer.getvalue()
         _save_auto_quote_log("zhan_shuang", output, "success")
+        _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
         pass
@@ -663,6 +665,7 @@ def zhan_shuang_feishu_quote() -> Response:
             zhan_shuang_feishu_run()
         output = buffer.getvalue()
         _save_auto_quote_log("zhan_shuang_feishu", output, "success")
+        _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
         pass
@@ -679,6 +682,7 @@ def bang2_auto_quote() -> Response:
             bang2_auto_quote_run()
         output = buffer.getvalue()
         _save_auto_quote_log("bang2", output, "success")
+        _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
         pass
@@ -696,6 +700,7 @@ def mamian_auto_quote() -> Response:
             mamian_auto_quote_run(project_key)
         output = buffer.getvalue()
         _save_auto_quote_log(project_key, output, "success")
+        _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
         pass
@@ -2263,6 +2268,7 @@ def start_quote_all() -> Response:
                 _save_auto_quote_log(key, err_output, "error")
         with _quote_jobs_lock:
             job["status"] = "done"
+        _refresh_report_cache_async()
 
     thread = threading.Thread(target=_run_all, daemon=True)
     thread.start()
