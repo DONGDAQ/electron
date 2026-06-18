@@ -11,7 +11,7 @@
   },
   "build": {
     "appId": "com.example.translation-quote",
-    "productName": "翻译报价系统",
+    "productName": "报价工具",
     "icon": "icon.ico",
     "directories": {
       "output": "dist"
@@ -43,7 +43,7 @@
       "artifactName": "${productName}-${version}-setup.exe"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.exe",
+      "artifactName": "${productName}.exe",
       "requestExecutionLevel": "highest"
     }
   },

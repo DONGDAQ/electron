@@ -2203,8 +2203,8 @@ AUTO_QUOTE_PROJECTS = [
     {"key": "bang2", "name": "BANG2", "company": "Bilibili"},
     {"key": "maniang", "name": "马娘", "company": "Bilibili"},
     {"key": "hbr", "name": "炽焰天穹", "company": "Bilibili"},
-    {"key": "tk", "name": "TK填表", "company": "Bilibili"},
-    {"key": "4399", "name": "4399填表", "company": "4399"},
+    {"key": "tk", "name": "TK", "company": "Bilibili"},
+    {"key": "4399", "name": "4399", "company": "4399"},
 ]
 
 

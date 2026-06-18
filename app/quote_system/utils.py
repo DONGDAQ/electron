@@ -127,7 +127,10 @@ def _extract_summary(output: str, status: str) -> str:
     import re
     m = re.search(r'完成:\s*(\d+)\s*条已填写.*?(\d+)\s*条跳过.*?(\d+)\s*条失败', text)
     if m:
-        return f"处理 {m.group(1)} 条，跳过 {m.group(2)} 条，失败 {m.group(3)} 条"
+        filled, skipped, failed = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if filled == 0 and skipped == 0 and failed == 0:
+            return "没有待处理需求"
+        return f"处理 {filled} 条，跳过 {skipped} 条，失败 {failed} 条"
 
     # 4399: "行X K/L/M列已写入: ..."
     m = re.search(r'行(\d+)\s*K/L/M列已写入', text)
