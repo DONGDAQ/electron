@@ -108,9 +108,13 @@ def find_pending_rows(rows: list[list]) -> list[dict]:
 def _parse_languages(val) -> list[str]:
     """解析B列多选值"""
     if isinstance(val, list):
-        return [str(v).strip() for v in val if v]
+        result = []
+        for v in val:
+            if v:
+                result.extend(s.strip() for s in str(v).split(",") if s.strip())
+        return result
     if isinstance(val, str) and val.strip():
-        return [val.strip()]
+        return [s.strip() for s in val.split(",") if s.strip()]
     return ["日翻中"]
 
 
