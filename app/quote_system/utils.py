@@ -167,7 +167,7 @@ def _extract_summary(output: str, status: str) -> str:
     return lines[-1][:100] if lines else ""
 
 
-def save_auto_quote_log(log_dir: Path, project_key: str, output: str, status: str) -> None:
+def save_auto_quote_log(log_dir: Path, project_key: str, output: str, status: str, trigger_type: str = "manual") -> None:
     """保存自动报价执行日志，同时维护 _index.json 摘要索引（最多保留 500 条）"""
     log_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -189,6 +189,7 @@ def save_auto_quote_log(log_dir: Path, project_key: str, output: str, status: st
         "status": status,
         "log_file": str(log_file),
         "summary": _extract_summary(output, status),
+        "type": trigger_type,
     })
     if len(index) > 500:
         index = index[-500:]

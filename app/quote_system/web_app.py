@@ -549,7 +549,8 @@ def auto_quote_logs() -> Response:
         try:
             idx = json.loads(index_file.read_text(encoding="utf-8"))
             for e in idx:
-                e["type"] = "auto"
+                if "type" not in e:
+                    e["type"] = "auto"
             logs.extend(idx)
         except Exception:
             pass
@@ -621,10 +622,10 @@ def download() -> Response:
     return send_file(path, as_attachment=True, download_name=path.name)
 
 
-def _save_auto_quote_log(project_key: str, output: str, status: str):
+def _save_auto_quote_log(project_key: str, output: str, status: str, trigger_type: str = "manual"):
     """保存自动报价执行日志"""
     from .utils import save_auto_quote_log
-    save_auto_quote_log(OUTPUTS_DIR / "logs" / "auto_quote", project_key, output, status)
+    save_auto_quote_log(OUTPUTS_DIR / "logs" / "auto_quote", project_key, output, status, trigger_type)
 
 
 @app.post("/auto-quote")

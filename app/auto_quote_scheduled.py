@@ -18,11 +18,11 @@ def _run_captured(label: str, fn):
     try:
         fn()
         out = buf.getvalue()
-        save_auto_quote_log(LOG_DIR, label, out, "success")
+        save_auto_quote_log(LOG_DIR, label, out, "success", "auto")
     except Exception as e:
         out = buf.getvalue()
         err = out + "\n" + traceback.format_exc()
-        save_auto_quote_log(LOG_DIR, label, err, "error")
+        save_auto_quote_log(LOG_DIR, label, err, "error", "auto")
         print(f"{label} 执行失败: {e}", file=old)
     finally:
         sys.stdout = old
