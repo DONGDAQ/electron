@@ -17,7 +17,6 @@ from quote_system.feishu_client import (
 from quote_system.generator import QuoteRequest, generate_quote
 from quote_system.memoq_html import parse_memoq_html, quote_words
 from quote_system.projects import resolve_project, ProjectConfig
-from quote_system.save_path_config import get_save_path
 from quote_system.paths import get_quote_history_dir
 
 WIKI_TOKEN = "WhA6waOPKiSajLkEPunc3Ob3nm8"
@@ -115,14 +114,16 @@ def _parse_languages(val) -> list[str]:
     return ["日翻中"]
 
 
+TEMP_DIR = ROOT / "outputs" / "mamian_html"
+
+
 def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, item: dict):
     row_num = item["row_num"]
     print(f"\n--- 处理行 {row_num} ---")
 
-    seq_dir = work_dir / f"row_{row_num}"
-    seq_dir.mkdir(parents=True, exist_ok=True)
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-    html_path = seq_dir / item["file_name"]
+    html_path = TEMP_DIR / item["file_name"]
     print(f"  下载HTML: {item['file_name']}")
     client.download_attachment(item["file_token"], html_path)
 
@@ -144,12 +145,12 @@ def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, it
         service_content=None,
         request_name=None,
         include_extract=False,
-        output_path=seq_dir,
+        output_path=work_dir,
     )
     result = generate_quote(ROOT, request)
     print(f"  报价单已生成: {result.final_path}")
 
-    _copy_to_save_path(project.key, result.final_path)
+    html_path.unlink(missing_ok=True)
 
     billable = _calc_billable_words(stats, languages)
     print(f"  计费字数: {billable}")
@@ -183,20 +184,17 @@ def _parse_date(val) -> date | None:
 
 
 def _calc_billable_words(stats, languages: list[str]) -> float:
-    all_row = stats.all_row
-    total_chars = all_row.source_chars or 0
-    total_asian = all_row.source_asian_characters or 0
-    punctuation_billable = (total_chars - total_asian) * 0.3
+    qw = float(quote_words(stats))
+    total_chars = float(stats.all_row.source_chars or 0)
 
-    qw = quote_words(stats)
     has_non_extract = any(lang != "摘字" for lang in languages)
     has_extract = any(lang == "摘字" for lang in languages)
 
     if has_non_extract and has_extract:
-        return punctuation_billable + total_asian
+        return qw + total_chars
     if has_extract:
-        return float(total_chars)
-    return float(qw)
+        return total_chars
+    return qw
 
 
 def _write_quote_link(client: FeishuClient, row: int, file_token: str, file_name: str):
@@ -217,17 +215,6 @@ def _write_quote_link(client: FeishuClient, row: int, file_token: str, file_name
     if result.get("code") != 0:
         raise RuntimeError(f"写入报价单链接失败: {result}")
 
-
-def _copy_to_save_path(project_key: str, source: Path):
-    save_path = get_save_path(project_key)
-    if not save_path:
-        return
-    dest_dir = Path(save_path)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / source.name
-    import shutil
-    shutil.copy2(str(source), str(dest))
-    print(f"  已另存至: {dest}")
 
 
 if __name__ == "__main__":
