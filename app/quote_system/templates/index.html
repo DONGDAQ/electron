@@ -148,6 +148,12 @@
             自动报价
           </button>
           {% endif %}
+          {% if selected_project.key in ['maniang', 'hbr'] %}
+          <button class="primary-button" id="mamianAutoQuoteBtn" onclick="runMamianAutoQuote()">
+            <i data-lucide="bot"></i>
+            自动报价
+          </button>
+          {% endif %}
         </div>
         <div style="display:none;align-items:center;gap:8px;" id="settleTopbarActions">
         </div>
@@ -503,7 +509,7 @@
           <div class="panel-heading">
             <div>
               <h3>一键报价</h3>
-              <p>自动检测并执行所有项目的新需求报价（共7个项目）</p>
+              <p>自动检测并执行所有项目的新需求报价（共9个项目）</p>
             </div>
             <i data-lucide="zap"></i>
           </div>
@@ -1880,6 +1886,41 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
         });
     }
     {% endif %}
+
+    {% if selected_project.key in ['maniang', 'hbr'] %}
+    function runMamianAutoQuote() {
+      const btn = document.getElementById('mamianAutoQuoteBtn');
+      const projectKey = document.getElementById('currentProject').value;
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
+      lucide.createIcons();
+
+      const formData = new URLSearchParams();
+      formData.append('project', projectKey);
+      fetch('/mamian/auto-quote', { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+          if (data.status === 'success') {
+            showToast('自动报价完成！');
+            showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + data.message + '</pre>', 'success');
+            loadQuoteHistory();
+          } else {
+            showToast('报价失败: ' + (data.message || '未知错误'), true);
+            showMessages('<p>' + (data.message || '报价失败') + '</p>', 'error');
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
+          lucide.createIcons();
+          showToast('请求失败: ' + err.message, true);
+        });
+    }
+    {% endif %}
+
     function showMessages(html, category) {
       let messagesDiv = document.querySelector('.messages');
       if (!messagesDiv) {
@@ -3137,6 +3178,8 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'zhan_shuang',name:'战双版更',company:'库洛游戏'},
       {key:'zhan_shuang_feishu',name:'战双发行',company:'库洛游戏'},
       {key:'bang2',name:'BANG2',company:'Bilibili'},
+      {key:'maniang',name:'马娘',company:'Bilibili'},
+      {key:'hbr',name:'炽焰天穹',company:'Bilibili'},
       {key:'tk',name:'TK填表',company:'Bilibili'},
       {key:'4399',name:'4399填表',company:'4399'},
     ];

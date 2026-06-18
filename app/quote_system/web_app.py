@@ -27,6 +27,7 @@ from .auto_quote import run as auto_quote_run
 from .auto_quote_zhan_shuang import run as zhan_shuang_auto_quote_run
 from .auto_quote_zhan_shuang_feishu import run as zhan_shuang_feishu_run
 from .auto_quote_bang2 import run as bang2_auto_quote_run
+from .auto_quote_mamian import run as mamian_auto_quote_run
 from .auto_quote_diezhi import detect_batches, generate_batch_quote, run_for_project, get_delivery_date
 
 
@@ -683,6 +684,23 @@ def bang2_auto_quote() -> Response:
         pass
         err = traceback.format_exc()
         _save_auto_quote_log("bang2", err, "error")
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.post("/mamian/auto-quote")
+def mamian_auto_quote() -> Response:
+    """马娘/HBR自动报价"""
+    project_key = request.form.get("project", "maniang")
+    try:
+        with capture_stdout() as buffer:
+            mamian_auto_quote_run(project_key)
+        output = buffer.getvalue()
+        _save_auto_quote_log(project_key, output, "success")
+        return jsonify({"status": "success", "message": output})
+    except Exception as exc:
+        pass
+        err = traceback.format_exc()
+        _save_auto_quote_log(project_key, err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
 
 
@@ -2172,6 +2190,8 @@ AUTO_QUOTE_PROJECTS = [
     {"key": "zhan_shuang", "name": "战双版更", "company": "库洛游戏"},
     {"key": "zhan_shuang_feishu", "name": "战双发行", "company": "库洛游戏"},
     {"key": "bang2", "name": "BANG2", "company": "Bilibili"},
+    {"key": "maniang", "name": "马娘", "company": "Bilibili"},
+    {"key": "hbr", "name": "炽焰天穹", "company": "Bilibili"},
     {"key": "tk", "name": "TK填表", "company": "Bilibili"},
     {"key": "4399", "name": "4399填表", "company": "4399"},
 ]
@@ -2186,6 +2206,8 @@ def _execute_single_auto_quote(project_key: str):
         zhan_shuang_feishu_run()
     elif project_key == "bang2":
         bang2_auto_quote_run()
+    elif project_key in ("maniang", "hbr"):
+        mamian_auto_quote_run(project_key)
     elif project_key == "tk":
         from .auto_fill_tk import run_scheduled
         run_scheduled()

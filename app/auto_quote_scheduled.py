@@ -34,6 +34,7 @@ if __name__ == "__main__":
     from quote_system.auto_quote_zhan_shuang_feishu import run as run_zhan_shuang_feishu
     from quote_system.auto_quote_bang2 import run as run_bang2
     from quote_system.auto_quote_4399 import run_scheduled as run_4399
+    from quote_system.auto_quote_mamian import run as run_mamian
 
     # 完美世界三个项目（幻塔、异环游戏内、异环发行）
     for project_key in ["huanta", "yihuan_nei", "yihuan_faxing"]:
@@ -45,6 +46,10 @@ if __name__ == "__main__":
 
     # BANG2
     _run_captured("bang2", run_bang2)
+
+    # 马娘 + HBR
+    for project_key in ["maniang", "hbr"]:
+        _run_captured(project_key, lambda pk=project_key: run_mamian(pk))
 
     # TK
     try:

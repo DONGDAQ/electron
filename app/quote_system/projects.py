@@ -35,6 +35,8 @@ PROJECTS: dict[str, ProjectConfig] = {
         file_prefix="报价单_代号PD",
         company="Bilibili",
         sort_order=1,
+        sheet_id="qLGeGb",
+        spreadsheet_token="WhA6waOPKiSajLkEPunc3Ob3nm8",
     ),
     "hbr": ProjectConfig(
         key="hbr",
@@ -48,6 +50,8 @@ PROJECTS: dict[str, ProjectConfig] = {
         file_prefix="报价单_炽焰天穹",
         company="Bilibili",
         sort_order=1,
+        sheet_id="9BHwzP",
+        spreadsheet_token="WhA6waOPKiSajLkEPunc3Ob3nm8",
     ),
     "bang2": ProjectConfig(
         key="bang2",

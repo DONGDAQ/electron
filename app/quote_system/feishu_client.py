@@ -277,6 +277,33 @@ class FeishuClient:
             raise RuntimeError(f"写入公式失败: {result}")
 
 
+def resolve_wiki_token(wiki_token: str) -> str:
+    """解析飞书wiki节点，返回实际的spreadsheet_token"""
+    url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    data = json.dumps({"app_id": APP_ID, "app_secret": APP_SECRET}).encode()
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    resp = urllib.request.urlopen(req, timeout=30)
+    result = json.loads(resp.read())
+    if result.get("code") != 0:
+        raise RuntimeError(f"飞书认证失败: {result}")
+    token = result["tenant_access_token"]
+
+    url = f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={wiki_token}"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json; charset=utf-8",
+    })
+    resp = urllib.request.urlopen(req, timeout=30)
+    result = json.loads(resp.read())
+    if result.get("code") != 0:
+        raise RuntimeError(f"解析wiki节点失败: {result}")
+    node = result["data"]["node"]
+    obj_token = node.get("obj_token", "")
+    if not obj_token:
+        raise RuntimeError(f"wiki节点没有关联的表格: {node}")
+    return obj_token
+
+
 def _col_letter(index: int) -> str:
     if index < 0:
         raise ValueError(f"列索引不能为负数: {index}")
