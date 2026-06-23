@@ -171,6 +171,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 600,
+    icon: path.join(__dirname, 'icon.ico'),
     title: '翻译报价系统',
     fullscreen: false,
     maximizable: true,

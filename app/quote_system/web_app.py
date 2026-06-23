@@ -1959,6 +1959,52 @@ def settlement_zulong_generate() -> Response:
     files = generate_zulong_settlement(year, month, {"yishan": yishan, "longzu": longzu})
     _refresh_report_cache_async()
     return jsonify({"status": "success", "files": files})
+
+NOTES_PATH = Path(__file__).parent.parent / "config" / "notes.json"
+
+def _load_notes() -> dict:
+    if NOTES_PATH.exists():
+        try:
+            with open(NOTES_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _save_notes(notes: dict):
+    NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(NOTES_PATH, "w", encoding="utf-8") as f:
+        json.dump(notes, f, ensure_ascii=False, indent=2)
+
+@api_handler
+@app.get("/api/notes")
+def get_notes() -> Response:
+    note_type = request.args.get("type", "")
+    project = request.args.get("project", "")
+    if not note_type or not project:
+        return jsonify({"status": "error", "message": "缺少 type/project 参数"}), 400
+    key = f"{note_type}:{project}"
+    notes = _load_notes()
+    return jsonify({"status": "success", "note": notes.get(key, "")})
+
+@api_handler
+@app.post("/api/notes")
+def save_notes() -> Response:
+    data = request.get_json() or {}
+    note_type = data.get("type", "")
+    project = data.get("project", "")
+    note = data.get("note", "")
+    if not note_type or not project:
+        return jsonify({"status": "error", "message": "缺少 type/project 参数"}), 400
+    key = f"{note_type}:{project}"
+    notes = _load_notes()
+    if note.strip():
+        notes[key] = note
+    else:
+        notes.pop(key, None)
+    _save_notes(notes)
+    return jsonify({"status": "success"})
+
 # ======================== 结算文件列表 ========================
 
 @app.get("/api/settlement-files")

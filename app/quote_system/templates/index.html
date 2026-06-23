@@ -393,6 +393,17 @@
             </label>
           </div>
 
+          <div class="note-section" style="margin-top:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:11px;color:var(--muted);">备注</span>
+              <button class="ghost-button" onclick="saveNote('quote')" style="font-size:11px;padding:2px 8px;">
+                <i data-lucide="save" style="width:12px;height:12px;"></i> 保存
+              </button>
+            </div>
+            <textarea id="quoteNote" rows="2" placeholder="在此输入备注，按保存后会持续保留..."
+              style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--success-color);resize:vertical;box-sizing:border-box;font-weight:500;"></textarea>
+          </div>
+
           {% if selected_project.generator != 'diezhi' %}
           <button class="primary-button" type="submit">
               <i data-lucide="sparkles"></i>
@@ -501,6 +512,17 @@
               <i data-lucide="copy"></i> 复制开票信息
             </button>
           </div>
+
+          <div class="note-section" style="margin-top:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:11px;color:var(--muted);">备注</span>
+              <button class="ghost-button" onclick="saveNote('settle')" style="font-size:11px;padding:2px 8px;">
+                <i data-lucide="save" style="width:12px;height:12px;"></i> 保存
+              </button>
+            </div>
+            <textarea id="settleNote" rows="2" placeholder="在此输入备注，按保存后会持续保留..."
+              style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--success-color);resize:vertical;box-sizing:border-box;font-weight:500;"></textarea>
+          </div>
         </div>
       </div>
 
@@ -579,6 +601,16 @@
             <summary style="cursor:pointer;color:var(--muted);padding:4px 0;">开票信息</summary>
             <div id="zlInvoiceContent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
           </details>
+          <div style="margin-top:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:11px;color:var(--muted);">备注</span>
+              <button class="ghost-button" onclick="saveZulongNote()" style="font-size:11px;padding:2px 8px;">
+                <i data-lucide="save" style="width:12px;height:12px;"></i> 保存
+              </button>
+            </div>
+            <textarea id="zlNote" rows="3" placeholder="在此输入备注，按保存后会持续保留..."
+              style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--success-color);resize:vertical;box-sizing:border-box;font-weight:500;"></textarea>
+          </div>
         </div>
       </div>
 
@@ -1041,8 +1073,9 @@
           button.style.display = 'none';
         });
       }
-      
+
       loadQuoteHistory();
+      loadNote('quote');
     });
     
     function loadQuoteHistory() {
@@ -1971,6 +2004,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           settleUnsupported.style.display = 'none';
           // 先初始化年月选择器（缓存恢复需要读取年月值）
           initSettleMonthPicker();
+          loadNote('settle');
           initMultiMonthSettle();
           // 尝试恢复缓存的预览数据
           var _restored = restoreSettlePreviewCache();
@@ -3167,6 +3201,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
         initZlMonthPicker();
         renderZlProjectCards();
         loadZlFileTree();
+        loadZulongNote();
       }
     }
 
@@ -3717,6 +3752,11 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
         if (m === (now.getMonth() === 0 ? 12 : now.getMonth())) o.selected = true;
         monthSel.appendChild(o);
       }
+      function onZlMonthChange() {
+        loadZlFileTree();
+      }
+      yearSel.addEventListener('change', onZlMonthChange);
+      monthSel.addEventListener('change', onZlMonthChange);
     }
 
     function getZlYearMonth() {
@@ -3834,6 +3874,62 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
         treeEl.innerHTML = html;
         lucide.createIcons();
       }).catch(function() { treeEl.innerHTML = '<div class="placeholder-text">加载失败</div>'; });
+    }
+
+    // ===== 通用备注 =====
+    function getCurrentProjectKey() {
+      var sel = document.getElementById('projectSelect');
+      return sel ? sel.value : '';
+    }
+
+    function loadNote(type) {
+      var project = getCurrentProjectKey();
+      if (!project) return;
+      var url = '/api/notes?type=' + type + '&project=' + project;
+      fetch(url).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success') {
+          var el = document.getElementById(type === 'quote' ? 'quoteNote' : 'settleNote');
+          if (el) el.value = data.note || '';
+        }
+      }).catch(function() {});
+    }
+
+    function saveNote(type) {
+      var project = getCurrentProjectKey();
+      if (!project) return;
+      var el = document.getElementById(type === 'quote' ? 'quoteNote' : 'settleNote');
+      var body = {type: type, project: project, note: el ? el.value : ''};
+      fetch('/api/notes', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success') showToast('备注已保存');
+        else showToast('保存失败: ' + data.message, true);
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); });
+    }
+
+    function loadZulongNote() {
+      fetch('/api/notes?type=settle&project=zulong')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success') {
+          document.getElementById('zlNote').value = data.note || '';
+        }
+      }).catch(function() {});
+    }
+
+    function saveZulongNote() {
+      var note = document.getElementById('zlNote').value;
+      fetch('/api/notes', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({type: 'settle', project: 'zulong', note: note}),
+      }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.status === 'success') showToast('备注已保存');
+        else showToast('保存失败: ' + data.message, true);
+      }).catch(function(e) { showToast('网络错误: ' + e.message, true); });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
