@@ -1,6 +1,6 @@
 {
   "name": "translation-quote-system",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "翻译报价系统 - Electron 版本",
   "main": "main.js",
   "scripts": {
@@ -20,7 +20,7 @@
       {
         "from": "app",
         "to": "app",
-        "filter": ["**/*", "!outputs/**", "!报价单历史/**", "!结算/**", "!汇总/**", "!**/*.log", "!**/__pycache__/**"]
+        "filter": ["**/*", "!outputs/**", "!报价/**", "!结算/**", "!汇总/**", "!**/*.log", "!**/__pycache__/**"]
       }
     ],
     "win": {

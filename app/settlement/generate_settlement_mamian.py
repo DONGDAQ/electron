@@ -1,4 +1,4 @@
-"""Bilibili 项目月度账单生成：从报价单历史 xlsx 读取数据 → 填充模板 → 移入已结算。
+"""Bilibili 项目月度账单生成：从报价 xlsx 读取数据 → 填充模板 → 移入已结算。
 支持马娘(maniang)、邦邦2(bang2)、炽焰天穹(hbr)。
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from quote_system.paths import get_quote_history_dir, get_settlement_dir
 from quote_system.utils import excel_serial_to_date
-from settlement._com_utils import com_excel
+from settlement._com_utils import com_excel, recalc_excel
 
 TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 OUTPUT_DIR = get_settlement_dir()
@@ -66,10 +66,7 @@ def _sum_data_column(qs, col: int, start_row: int, end_row: int) -> int:
 def _recalc_quote(xlsx_path: Path) -> bool:
     """用 Excel 打开报价单重算公式，保存缓存值。成功返回 True。"""
     try:
-        with com_excel() as excel:
-            wb = excel.Workbooks.Open(str(xlsx_path.resolve()))
-            wb.Save()
-            wb.Close()
+        recalc_excel(xlsx_path)
         return True
     except Exception:
         return False
@@ -167,7 +164,7 @@ def _parse_date(val) -> str | None:
 
 
 def scan_quotes(target_year: int, target_month: int, project_key: str = "maniang"):
-    """扫描报价单历史文件夹（仅根目录），筛选指定月份的未结算记录。"""
+    """扫描报价文件夹（仅根目录），筛选指定月份的未结算记录。"""
     cfg = _get_bill_config(project_key)
     quote_dir = get_quote_history_dir() / SETTLEMENT_COMPANY / cfg["quote_history_dir"]
     if not quote_dir.exists():
@@ -233,7 +230,7 @@ def main():
 
     year, month, pk = args.year, args.month, args.project
     cfg = _get_bill_config(pk)
-    print(f"扫描 报价单历史/{SETTLEMENT_COMPANY}/{cfg['quote_history_dir']} ...")
+    print(f"扫描 报价/{SETTLEMENT_COMPANY}/{cfg['quote_history_dir']} ...")
     records = scan_quotes(year, month, pk)
 
     if not records:

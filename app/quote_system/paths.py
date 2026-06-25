@@ -13,6 +13,7 @@ _config_cache_mtime: float = 0
 def _load_config() -> dict:
     """加载配置：用户覆盖优先，出厂默认兜底。带 mtime 缓存。"""
     global _config_cache, _config_cache_mtime
+    current_mtime = 0
     try:
         mtimes = []
         for p in (_FACTORY_CONFIG, _USER_CONFIG):
@@ -48,7 +49,7 @@ def get_quote_history_dir() -> Path:
     config = _load_config()
     if config.get("quote_history_base"):
         return Path(config["quote_history_base"])
-    return Path(__file__).resolve().parent.parent / "报价单历史"
+    return Path(__file__).resolve().parent.parent / "报价"
 
 
 def get_settlement_dir() -> Path:
@@ -63,5 +64,16 @@ def get_settlement_dir() -> Path:
 
 def save_user_config(data: dict) -> None:
     """保存用户覆盖配置（写入 base_paths.user.json，永不动工厂默认）。"""
+    global _config_cache, _config_cache_mtime
     _USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
     _USER_CONFIG.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 更新缓存：合并工厂默认 + 用户覆盖
+    config = {}
+    if _FACTORY_CONFIG.exists():
+        try:
+            config.update(json.loads(_FACTORY_CONFIG.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    config.update(data)
+    _config_cache = config
+    _config_cache_mtime = _USER_CONFIG.stat().st_mtime

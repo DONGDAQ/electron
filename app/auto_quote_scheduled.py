@@ -1,27 +1,14 @@
 """定时自动报价：每天自动检查项目的新需求并生成报价单"""
 import io
-import json
 import sys
 import traceback
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).parent
 LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs" / "auto_quote"
 FILL_LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs"
 
-from quote_system.utils import save_auto_quote_log
-from quote_system.paths import get_quote_history_dir
-
-
-def _write_fill_meta(project: str):
-    """写入填表 meta 文件，标记为自动触发"""
-    meta_path = FILL_LOG_DIR / f"{project}_fill.meta.json"
-    try:
-        meta = {"type": "auto", "timestamp": datetime.now().isoformat()}
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+from quote_system.utils import save_auto_quote_log, write_fill_meta
 
 
 def _run_captured(label: str, fn):
@@ -66,13 +53,13 @@ if __name__ == "__main__":
     # TK
     try:
         from quote_system.auto_fill_tk import run_scheduled as run_tk
-        _write_fill_meta("tk")
+        write_fill_meta(FILL_LOG_DIR, "tk", "auto")
         _run_captured("tk", run_tk)
     except Exception as e:
         print(f"TK自动报价跳过: {e}")
 
     # 4399 在线表填表
-    _write_fill_meta("4399")
+    write_fill_meta(FILL_LOG_DIR, "4399", "auto")
     _run_captured("4399", run_4399)
 
     # 同步 TK 飞书表数据到本地缓存

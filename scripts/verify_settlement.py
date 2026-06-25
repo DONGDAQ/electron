@@ -76,9 +76,9 @@ def infer_key_from_filename(f):
     elif '祖龙' in f or '以闪亮之名' in f or '龙族' in f: return 'zulong'
     return None
 
-# ===== 1. 扫描报价单历史 =====
+# ===== 1. 扫描报价 =====
 truth = {}
-quote_dir = os.path.join(BASE, '报价单历史')
+quote_dir = os.path.join(BASE, '报价')
 for company in os.listdir(quote_dir):
     comp_path = os.path.join(quote_dir, company)
     if not os.path.isdir(comp_path):

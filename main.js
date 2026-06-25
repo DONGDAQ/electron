@@ -15,7 +15,7 @@ function getAppDir() {
 }
 
 function getHistoryDir() {
-  return path.join(getAppDir(), '报价单历史');
+  return path.join(getAppDir(), '报价');
 }
 
 function findWpsExecutable() {

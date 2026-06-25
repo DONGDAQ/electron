@@ -246,7 +246,7 @@
               <div class="panel-heading">
                 <div>
                   <h3>需求信息</h3>
-                  <p>生成后直接保存到报价单历史</p>
+                  <p>生成后直接保存到报价</p>
                 </div>
               <i data-lucide="file-spreadsheet"></i>
             </div>
@@ -618,7 +618,7 @@
         <div class="panel history-panel" id="quoteHistoryPanel">
           <div class="panel-heading">
             <div>
-              <h3>报价单历史</h3>
+              <h3>报价</h3>
               <span class="history-count" id="historyCount">0</span>
             </div>
             <i data-lucide="refresh-cw" style="cursor:pointer;" onclick="loadQuoteHistory()" title="刷新"></i>
@@ -679,9 +679,9 @@
       </div>
       <div class="modal-body">
         <div class="modal-field">
-          <label>报价单历史目录</label>
+          <label>报价目录</label>
           <div class="modal-input-row">
-            <input type="text" id="settingsQuotePath" placeholder="默认: 应用目录/报价单历史">
+            <input type="text" id="settingsQuotePath" placeholder="默认: 应用目录/报价">
             <button type="button" class="ghost-button" onclick="browseFolder('settingsQuotePath')">
               <i data-lucide="folder-open"></i>
             </button>
@@ -1088,7 +1088,7 @@
         .then(data => {
           if (data.status === 'success') {
             if (!data.data || data.data.length === 0) {
-              historyContent.innerHTML = '<div class="placeholder-text">暂无报价单历史</div>';
+              historyContent.innerHTML = '<div class="placeholder-text">暂无报价历史</div>';
               historyCount.textContent = '0';
               return;
             }
@@ -1165,7 +1165,7 @@
           }
         })
         .catch(error => {
-          console.error('加载报价单历史失败:', error);
+          console.error('加载报价历史失败:', error);
           historyContent.innerHTML = '<div class="error-text">加载失败</div>';
           historyCount.textContent = '0';
         });

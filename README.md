@@ -29,7 +29,7 @@ electron/
 │   ├── quote_system/       # 报价系统核心代码
 │   ├── config/             # 配置文件
 │   ├── 模板/               # Excel 模板
-│   ├── 报价单历史/         # 生成的报价单
+│   ├── 报价/               # 生成的报价单
 │   └── outputs/            # 输出文件
 ├── main.js                 # Electron 主进程
 ├── package.json            # Electron 依赖配置

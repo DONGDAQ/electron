@@ -101,6 +101,28 @@ def clean_optional(value: str | None) -> str | None:
     return value or None
 
 
+def write_fill_meta(log_dir: Path, project: str, trigger_type: str) -> None:
+    """写入填表 meta 文件，记录触发来源（auto/manual/test）。"""
+    meta_path = log_dir / f"{project}_fill.meta.json"
+    try:
+        meta = {"type": trigger_type, "timestamp": datetime.now().isoformat()}
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def read_fill_meta(log_dir: Path, project: str) -> str:
+    """读取填表 meta 文件，返回 trigger_type（默认 manual）。"""
+    meta_path = log_dir / f"{project}_fill.meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            return meta.get("type", "manual")
+        except Exception:
+            pass
+    return "manual"
+
+
 def parse_date(value: str | None) -> date | None:
     """解析日期字符串，支持 YYYY-MM-DD 和 YYYY/MM/DD 格式"""
     value = clean_optional(value)

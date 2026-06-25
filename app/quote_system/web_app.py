@@ -17,7 +17,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 from markupsafe import Markup, escape
 
 from .config import get_effective_language_config, save_language_config, reset_to_default
-from .utils import api_handler, capture_stdout, clean_optional, excel_serial_to_date, parse_date, validate_year_month, BadRequest
+from .utils import api_handler, capture_stdout, clean_optional, excel_serial_to_date, parse_date, validate_year_month, write_fill_meta, read_fill_meta, BadRequest
 from .generator import QuoteRequest, generate_quote
 from .memoq_html import quote_words
 from .projects import PROJECTS, resolve_project, get_projects_by_company, save_project_config
@@ -82,26 +82,13 @@ def _detect_trigger_type(req) -> str:
 def _write_fill_meta(log_dir: Path, project: str, req) -> str:
     """在启动填表前写入 meta 文件，记录触发来源。返回 trigger_type。"""
     trigger_type = _detect_trigger_type(req)
-    meta_path = log_dir / f"{project}_fill.meta.json"
-    try:
-        from datetime import datetime as _dt
-        meta = {"type": trigger_type, "timestamp": _dt.now().isoformat()}
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    write_fill_meta(log_dir, project, trigger_type)
     return trigger_type
 
 
 def _read_fill_meta(project: str) -> str:
     """读取填表 meta 文件，返回 trigger_type（默认 manual）。"""
-    meta_path = OUTPUTS_DIR / "logs" / f"{project}_fill.meta.json"
-    if meta_path.exists():
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            return meta.get("type", "manual")
-        except Exception:
-            pass
-    return "manual"
+    return read_fill_meta(OUTPUTS_DIR / "logs", project)
 
 
 def _parse_fill_summary(content: str, label: str) -> str:
@@ -123,9 +110,19 @@ def _parse_fill_summary(content: str, label: str) -> str:
 DELETABLE_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".docx", ".pdf"}
 
 
+_refresh_lock = threading.Lock()
+_refresh_pending = False
+
 def _refresh_report_cache_async() -> None:
-    """后台刷新报告缓存（含TK数据同步）"""
+    """后台刷新报告缓存（含TK数据同步），带防抖：短时间内多次调用只执行一次。"""
+    global _refresh_pending
+    with _refresh_lock:
+        if _refresh_pending:
+            return
+        _refresh_pending = True
+
     def _do():
+        global _refresh_pending
         try:
             from .auto_fill_tk import sync_tk_data
             sync_tk_data()
@@ -136,6 +133,8 @@ def _refresh_report_cache_async() -> None:
             sync_report_cache()
         except Exception:
             pass
+        with _refresh_lock:
+            _refresh_pending = False
     threading.Thread(target=_do, daemon=True).start()
 
 
@@ -427,8 +426,6 @@ def all_quotes() -> Response:
 @app.get("/api/report-dashboard")
 def report_dashboard() -> Response:
     """从缓存读取报告数据，补充 today_runs 后返回"""
-    pass
-
     cache_file = OUTPUTS_DIR / "cache" / "report_dashboard.json"
     if not cache_file.exists():
         return {"status": "empty", "message": "报告缓存不存在，请先执行自动报价或手动刷新"}
@@ -487,7 +484,6 @@ def report_dashboard_refresh_status() -> Response:
     sync_time = None
     if cache_file.exists():
         try:
-            pass
             data = json.loads(cache_file.read_text(encoding="utf-8"))
             sync_time = data.get("sync_time")
         except Exception:
@@ -640,7 +636,6 @@ def auto_quote() -> Response:
         _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        pass
         err = traceback.format_exc()
         _save_auto_quote_log(project_key, err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -657,7 +652,6 @@ def zhan_shuang_auto_quote() -> Response:
         _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        pass
         err = traceback.format_exc()
         _save_auto_quote_log("zhan_shuang", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -674,7 +668,6 @@ def zhan_shuang_feishu_quote() -> Response:
         _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        pass
         err = traceback.format_exc()
         _save_auto_quote_log("zhan_shuang_feishu", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -691,7 +684,6 @@ def bang2_auto_quote() -> Response:
         _refresh_report_cache_async()
         return jsonify({"status": "success", "message": output})
     except Exception as exc:
-        pass
         err = traceback.format_exc()
         _save_auto_quote_log("bang2", err, "error")
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -977,7 +969,7 @@ def quote_history() -> Response:
         
         return {"status": "success", "data": result, "project": project_key}
     except Exception as exc:
-        print(f"获取报价单历史错误: {exc}")
+        print(f"获取报价历史错误: {exc}")
         return {"status": "error", "message": str(exc)}, 500
 
 
@@ -1961,20 +1953,34 @@ def settlement_zulong_generate() -> Response:
     return jsonify({"status": "success", "files": files})
 
 NOTES_PATH = Path(__file__).parent.parent / "config" / "notes.json"
+_notes_cache: dict | None = None
+_notes_cache_mtime: float = 0
 
 def _load_notes() -> dict:
-    if NOTES_PATH.exists():
-        try:
-            with open(NOTES_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    global _notes_cache, _notes_cache_mtime
+    if not NOTES_PATH.exists():
+        return {}
+    try:
+        mt = NOTES_PATH.stat().st_mtime
+        if _notes_cache is not None and mt == _notes_cache_mtime:
+            return _notes_cache
+    except Exception:
+        mt = 0
+    try:
+        with open(NOTES_PATH, "r", encoding="utf-8") as f:
+            _notes_cache = json.load(f)
+            _notes_cache_mtime = mt or NOTES_PATH.stat().st_mtime
+            return _notes_cache
+    except Exception:
+        return {}
 
 def _save_notes(notes: dict):
+    global _notes_cache, _notes_cache_mtime
     NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(NOTES_PATH, "w", encoding="utf-8") as f:
         json.dump(notes, f, ensure_ascii=False, indent=2)
+    _notes_cache = notes
+    _notes_cache_mtime = NOTES_PATH.stat().st_mtime
 
 @api_handler
 @app.get("/api/notes")
@@ -2311,7 +2317,6 @@ def start_quote_all() -> Response:
                     job["projects"][key]["status"] = "done"
                 _save_auto_quote_log(key, output, "success")
             except Exception as e:
-                pass
                 err_output = traceback.format_exc()
                 with _quote_jobs_lock:
                     job["projects"][key]["status"] = "error"

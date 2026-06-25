@@ -15,7 +15,7 @@ env/
 .vscode/launch.json
 app/outputs/
 outputs/
-app/报价单历史/
+app/报价/
 app/汇总/
 app/结算/
 app/config/project_config.json

@@ -277,24 +277,12 @@ class FeishuClient:
             raise RuntimeError(f"写入公式失败: {result}")
 
 
-def resolve_wiki_token(wiki_token: str) -> str:
-    """解析飞书wiki节点，返回实际的spreadsheet_token"""
-    url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-    data = json.dumps({"app_id": APP_ID, "app_secret": APP_SECRET}).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    resp = urllib.request.urlopen(req, timeout=30)
-    result = json.loads(resp.read())
-    if result.get("code") != 0:
-        raise RuntimeError(f"飞书认证失败: {result}")
-    token = result["tenant_access_token"]
-
-    url = f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={wiki_token}"
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8",
-    })
-    resp = urllib.request.urlopen(req, timeout=30)
-    result = json.loads(resp.read())
+def resolve_wiki_token(wiki_token: str, client: FeishuClient | None = None) -> str:
+    """解析飞书wiki节点，返回实际的spreadsheet_token。可复用已有 client 的认证。"""
+    if client is None:
+        client = FeishuClient()
+    result = client._api("GET",
+        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={wiki_token}")
     if result.get("code") != 0:
         raise RuntimeError(f"解析wiki节点失败: {result}")
     node = result["data"]["node"]

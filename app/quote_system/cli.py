@@ -59,5 +59,5 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--delivery-date", help="交付日期，格式 YYYY-MM-DD。不填则写未定")
     generate.add_argument("--service-content", help="报价单 C10 服务内容/文件名")
     generate.add_argument("--request-name", help="输出文件名里的需求名，例如 0416需求")
-    generate.add_argument("--output", help="指定输出 xlsx 路径；不填则保存到报价单历史对应项目目录")
+    generate.add_argument("--output", help="指定输出 xlsx 路径；不填则保存到报价对应项目目录")
     return parser

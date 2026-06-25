@@ -12,12 +12,12 @@ sys.path.insert(0, str(ROOT))
 from quote_system.feishu_client import (
     FeishuClient,
     resolve_wiki_token,
-    excel_date_serial_to_date,
 )
 from quote_system.generator import QuoteRequest, generate_quote
 from quote_system.memoq_html import parse_memoq_html, quote_words
 from quote_system.projects import resolve_project, ProjectConfig
 from quote_system.paths import get_quote_history_dir
+from quote_system.utils import excel_serial_to_date
 
 WIKI_TOKEN = "WhA6waOPKiSajLkEPunc3Ob3nm8"
 
@@ -35,7 +35,8 @@ def run(project_key: str = "maniang"):
     work_dir = get_quote_history_dir() / project.history_dir
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {project.display_name}自动报价开始")
 
-    actual_token = resolve_wiki_token(WIKI_TOKEN)
+    tmp_client = FeishuClient()
+    actual_token = resolve_wiki_token(WIKI_TOKEN, client=tmp_client)
     client = FeishuClient(
         sheet_id=project.sheet_id,
         spreadsheet_token=actual_token,
@@ -173,15 +174,7 @@ def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, it
 
 
 def _parse_date(val) -> date | None:
-    if val is None:
-        return None
-    date_str = excel_date_serial_to_date(val)
-    if date_str:
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-    return None
+    return excel_serial_to_date(val, as_date=True)
 
 
 def _calc_billable_words(stats, languages: list[str]) -> float:
