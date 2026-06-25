@@ -187,9 +187,11 @@ def process_group(client: FeishuClient, project, work_dir: Path, items: list[dic
 
         # 读取C10作为报价页文件名
         wb = openpyxl.load_workbook(result.final_path, data_only=False)
-        ws = wb[wb.sheetnames[0]]
-        page_fname = ws["C10"].value or ""
-        wb.close()
+        try:
+            ws = wb[wb.sheetnames[0]]
+            page_fname = ws["C10"].value or ""
+        finally:
+            wb.close()
 
         # 回写每个行的H列（相同文件名）和I列（各自的报价字数）
         for item, billable in zip(items, billables):

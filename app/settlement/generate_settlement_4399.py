@@ -150,7 +150,7 @@ def read_feishu_data_4399(year: int, month: int) -> dict[str, list[dict]]:
         k_val = float(row[10]) if len(row) > 10 and row[10] is not None else 0
         l_val = float(row[11]) if len(row) > 11 and row[11] is not None else 0
         m_val = float(row[12]) if len(row) > 12 and row[12] is not None else 0
-        word_count = round(k_val - m_val + (l_val - k_val) * 0.25)
+        word_count = max(0, round(k_val - m_val + (l_val - k_val) * 0.25))
 
         records = projects.setdefault(project_name, [])
         records.append({

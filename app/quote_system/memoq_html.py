@@ -250,7 +250,7 @@ def parse_int(value: str | None) -> int | None:
     if cleaned in {"", "-"}:
         return None
     try:
-        return int(float(cleaned))
+        return round(float(cleaned))
     except ValueError:
         return None
 

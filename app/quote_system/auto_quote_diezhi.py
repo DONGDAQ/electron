@@ -462,8 +462,10 @@ def generate_batch_quote(
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
 
-    wb.save(out_path)
-    wb.close()
+    try:
+        wb.save(out_path)
+    finally:
+        wb.close()
 
     save_path = get_save_path(project_key)
     if save_path:

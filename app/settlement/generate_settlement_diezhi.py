@@ -157,9 +157,11 @@ def read_x3_quote_by_type(quote_path, delivery_cell):
             elif note == "润色/非我方初翻":
                 type_words["润色/非我方初翻"] += f_val
             elif note == "TEP润色/我方初翻":
+                # TEP和润色分别计费：TEP按0.52，润色按0.26
                 type_words["TEP"] += f_val
                 type_words["润色/我方初翻"] += f_val
             elif note == "TEP润色/非我方初翻":
+                # TEP和润色分别计费：TEP按0.52，润色按0.26
                 type_words["TEP"] += f_val
                 type_words["润色/非我方初翻"] += f_val
         wb.close()

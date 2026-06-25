@@ -44,6 +44,8 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 TK_FILL_THREAD: threading.Thread | None = None
 TK_FILL_RUNNING: bool = False
 FILL_4399_PROCESS: subprocess.Popen | None = None
+REPORT_REFRESH_RUNNING: bool = False
+_task_lock = threading.Lock()
 LOCAL_ONLY_ENDPOINTS = {"/delete-quote", "/open-file", "/open-folder"}
 
 _OPERATION_LOG = OUTPUTS_DIR / "logs" / "operations.log"
@@ -451,17 +453,15 @@ def report_dashboard() -> Response:
     return {"status": "success", "data": data}
 
 
-REPORT_REFRESH_RUNNING = False
-
 @app.post("/api/report-dashboard/refresh")
 def report_dashboard_refresh() -> Response:
     """手动刷新报告缓存（异步）"""
     global REPORT_REFRESH_RUNNING
-    if REPORT_REFRESH_RUNNING:
-        return jsonify({"status": "running", "message": "正在刷新中..."})
-    def _do_refresh():
-        global REPORT_REFRESH_RUNNING
+    with _task_lock:
+        if REPORT_REFRESH_RUNNING:
+            return jsonify({"status": "running", "message": "正在刷新中..."})
         REPORT_REFRESH_RUNNING = True
+    def _do_refresh():
         try:
             from .auto_fill_tk import sync_tk_data
             sync_tk_data()
@@ -768,11 +768,13 @@ def start_tk_fill() -> Response:
     _log_operation("tk_fill_start", request)
     global TK_FILL_THREAD, TK_FILL_RUNNING
     try:
-        if TK_FILL_RUNNING:
-            return jsonify({
-                "status": "error",
-                "message": "TK 填表已经在运行，请等待完成。",
-            }), 409
+        with _task_lock:
+            if TK_FILL_RUNNING:
+                return jsonify({
+                    "status": "error",
+                    "message": "TK 填表已经在运行，请等待完成。",
+                }), 409
+            TK_FILL_RUNNING = True
 
         # Parse arguments (same as CLI)
         tail = 0
@@ -815,7 +817,6 @@ def start_tk_fill() -> Response:
                 log_file.close()
                 TK_FILL_RUNNING = False
 
-        TK_FILL_RUNNING = True
         TK_FILL_THREAD = threading.Thread(target=_run_tk_fill, daemon=True)
         TK_FILL_THREAD.start()
 
@@ -825,7 +826,8 @@ def start_tk_fill() -> Response:
             "log_path": str(log_path),
         })
     except Exception as exc:
-        TK_FILL_RUNNING = False
+        with _task_lock:
+            TK_FILL_RUNNING = False
         return jsonify({"status": "error", "message": str(exc)}), 500
 
 

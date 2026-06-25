@@ -100,12 +100,16 @@ def generate_quote(root: Path, request: QuoteRequest) -> QuoteResult:
     shutil.copy2(template_path, default_path)
 
     wb = openpyxl.load_workbook(default_path)
-    if request.project.generator == "zhan_shuang":
+    gen = request.project.generator
+    if gen == "zhan_shuang":
         fill_zhan_shuang(wb, request, stats)
-    elif request.project.generator == "bang2":
+    elif gen == "bang2":
         fill_bang2(wb, request, stats)
-    elif request.project.generator == "huanta":
+    elif gen == "huanta":
         fill_huan_ta(wb, request, stats)
+    elif gen in ("tk_fill", "zulong_settlement", "fill_4399"):
+        wb.close()
+        raise ValueError(f"'{request.project.display_name}' 使用 {gen} 自动填表，不支持手动生成报价单")
     else:
         fill_punctuation_project(wb, request, stats)
 
@@ -173,7 +177,7 @@ def fill_bang2(wb, request: QuoteRequest, stats_list: list[MemoqStats]) -> None:
 
         for language in file_languages:
             price = get_price(request, language)
-            words = stats.all_row.source_chars or 0 if language == "摘字" else words_formula
+            words = (stats.all_row.source_chars or 0) if language == "摘字" else words_formula
             quote_row = write_quote_line(
                 quote_ws,
                 quote_row,
