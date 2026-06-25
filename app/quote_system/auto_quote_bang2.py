@@ -60,7 +60,11 @@ def find_bang2_rows(rows: list[list]) -> list[dict]:
             name = raw_name
             last_name = raw_name
 
-        lang = str(row[1]).strip() if len(row) > 1 else ""
+        raw_lang = row[1] if len(row) > 1 else ""
+        if isinstance(raw_lang, list):
+            langs = [str(l).strip() for l in raw_lang if str(l).strip()]
+        else:
+            langs = [str(raw_lang).strip()] if raw_lang else []
 
         date_serial = row[2] if len(row) > 2 else None
         date_str = excel_date_serial_to_date(date_serial) if date_serial else ""
@@ -81,16 +85,21 @@ def find_bang2_rows(rows: list[list]) -> list[dict]:
         elif isinstance(e_val, str) and e_val.strip() == "同上":
             is_tongshang = True
 
-        result.append({
-            "row_num": row_num,
-            "req_name": name,
-            "lang": lang,
-            "date_str": date_str,
-            "deliv_str": deliv_str,
-            "file_token": file_token,
-            "file_name": file_name,
-            "is_tongshang": is_tongshang,
-        })
+        if not langs:
+            langs = [""]
+
+        for li, lang in enumerate(langs):
+            is_first = li == 0
+            result.append({
+                "row_num": row_num,
+                "req_name": name,
+                "lang": lang,
+                "date_str": date_str,
+                "deliv_str": deliv_str,
+                "file_token": file_token if is_first else None,
+                "file_name": file_name if is_first else None,
+                "is_tongshang": not is_first and file_token is not None,
+            })
 
     return result
 
