@@ -63,6 +63,8 @@ def find_bang2_rows(rows: list[list]) -> list[dict]:
         raw_lang = row[1] if len(row) > 1 else ""
         if isinstance(raw_lang, list):
             langs = [str(l).strip() for l in raw_lang if str(l).strip()]
+        elif isinstance(raw_lang, str) and "," in raw_lang:
+            langs = [s.strip() for s in raw_lang.split(",") if s.strip()]
         else:
             langs = [str(raw_lang).strip()] if raw_lang else []
 
