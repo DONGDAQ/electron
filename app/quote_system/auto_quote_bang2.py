@@ -21,18 +21,26 @@ SHEET_ID = "mzekJf"
 
 LANG_MAP = {
     "日中": "日翻中",
+    "日译中": "日翻中",
     "日翻中": "日翻中",
     "日韩": "日翻韩",
+    "日译韩": "日翻韩",
     "日翻韩": "日翻韩",
     "日英": "日翻英",
+    "日译英": "日翻英",
     "日翻英": "日翻英",
     "日繁": "日翻繁",
+    "日译繁": "日翻繁",
     "日翻繁": "日翻繁",
+
     "中韩": "中翻韩",
+    "中译韩": "中翻韩",
     "中翻韩": "中翻韩",
     "中英": "中翻英",
+    "中译英": "中翻英",
     "中翻英": "中翻英",
     "中繁": "中翻繁",
+    "中译繁": "中翻繁",
     "中翻繁": "中翻繁",
 }
 
@@ -100,7 +108,7 @@ def find_bang2_rows(rows: list[list]) -> list[dict]:
                 "deliv_str": deliv_str,
                 "file_token": file_token if is_first else None,
                 "file_name": file_name if is_first else None,
-                "is_tongshang": not is_first and file_token is not None,
+                "is_tongshang": is_tongshang or (not is_first and file_token is not None),
             })
 
     return result
