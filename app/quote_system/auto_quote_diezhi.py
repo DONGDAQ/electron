@@ -458,7 +458,7 @@ def generate_batch_quote(
         if file_idx >= file_count:
             quote_ws.row_dimensions[r].hidden = True
 
-    # 11) 启用自动计算
+    # 11) 启用自动计算 & 保存
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
 
@@ -466,6 +466,17 @@ def generate_batch_quote(
         wb.save(out_path)
     finally:
         wb.close()
+
+    # 12) 用 Excel COM 重算公式并缓存结果（openpyxl 只写公式不计算）
+    try:
+        from settlement._com_utils import com_excel
+        with com_excel() as excel:
+            ewb = excel.Workbooks.Open(str(out_path.resolve()))
+            excel.CalculateUntilAsyncQueriesDone()
+            ewb.Save()
+            ewb.Close()
+    except Exception as e:
+        print(f'[WARN] Excel公式重算失败({out_path.name}): {e}')
 
     save_path = get_save_path(project_key)
     if save_path:

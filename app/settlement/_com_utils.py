@@ -1,6 +1,9 @@
 """COM 对象上下文管理器，消除重复的 CoInitialize/Dispatch/Cleanup 模式"""
 from __future__ import annotations
 
+import pythoncom
+import win32com.client
+
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -8,9 +11,7 @@ from pathlib import Path
 @contextmanager
 def com_excel():
     """Excel COM 上下文管理器。退出时自动 Close/Quit/CoUninitialize。"""
-    import pythoncom
     pythoncom.CoInitialize()
-    import win32com.client
     excel = win32com.client.DispatchEx("Excel.Application")
     excel.Visible = False
     excel.DisplayAlerts = False
@@ -38,9 +39,7 @@ def com_excel():
 @contextmanager
 def com_word():
     """Word COM 上下文管理器。退出时自动 Close/Quit/CoUninitialize。"""
-    import pythoncom
     pythoncom.CoInitialize()
-    import win32com.client
     word = win32com.client.Dispatch("Word.Application")
     word.Visible = False
     word.DisplayAlerts = False
