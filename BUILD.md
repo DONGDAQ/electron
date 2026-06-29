@@ -12,6 +12,30 @@
 
 ---
 
+⚠️ 重要注意事项（打包前必读）
+------------
+
+### 1. PyInstaller 必须能检测到 pywin32
+
+`app/settlement/_com_utils.py` 中的 `import pythoncom` 和 `import win32com.client` **必须写在文件顶部**，不能写在函数内部。
+
+原因：PyInstaller 只扫描顶层 import，函数内部的 import 会被忽略，导致打包后的 `flask_server.exe` 里没有 pywin32，公式缓存功能（`_ensure_formula_cached`）会静默失败。
+
+验证方法（打包后检查）：
+```bash
+ls "D:/baojia/electron/dist/flask_build/flask_server/_internal/" | grep -i "pythoncom\|pywin\|win32com"
+```
+
+### 2. electron-builder 必须用系统 Node 运行
+
+不要用 `npm run build`（managed Node 路径有问题），直接用系统 Node：
+```bash
+cd "D:/baojia/electron"
+"C:/Program Files/nodejs/npx.cmd" electron-builder --win portable
+```
+
+---
+
 ## 架构总图
 
 ```
@@ -89,6 +113,13 @@ pip install <包名> -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```bash
 npm run build
 ```
+
+> ⚠️ **注意**：如果运行 `npm run build` 报 `MODULE_NOT_FOUND`，说明 managed Node 路径有问题。
+> 请改用系统 Node 直接运行：
+> ```bash
+> cd "D:/baojia/electron"
+> "C:/Program Files/nodejs/npx.cmd" electron-builder --win portable
+> ```
 
 这条命令在 `package.json` 中定义为：
 
@@ -176,7 +207,7 @@ a = Analysis(
         'quote_system.auto_quote_4399',
         'quote_system.auto_fill_tk',
         'settlement.generate_settlement',
-        'settlement.generate_settlement_mamian',
+        'settlement.generate_settlement_bilibili',
         'settlement.generate_settlement_zhan_shuang',
         'settlement.generate_settlement_zhan_shuang_faxing',
         'settlement.generate_settlement_4399',
