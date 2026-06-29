@@ -27,6 +27,7 @@ TEMPLATE_NAME = "bilibili结算单盖章用模板.docx"
 SEALED_CONFIG = {
     "maniang": {"project": "马娘", "project_full_name": "优俊少女", "code": "代号PD"},
     "bang2": {"project": "bang2", "project_full_name": "邦邦2", "code": "邦邦2"},
+    "bang2_shequ": {"project": "BANG2社区", "project_full_name": "BANG2社区", "code": "BANG2社区"},
     "hbr": {"project": "HBR", "project_full_name": "炽焰天穹", "code": "HBR"},
 }
 

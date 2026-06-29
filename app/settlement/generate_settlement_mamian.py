@@ -38,6 +38,12 @@ BILL_CONFIG = {
         "code": "邦邦2",
         "quote_history_dir": "bang2",
     },
+    "bang2_shequ": {
+        "project": "BANG2社区",
+        "project_full_name": "BANG2社区",
+        "code": "BANG2社区",
+        "quote_history_dir": "bang2社区",
+    },
     "hbr": {
         "project": "HBR",
         "project_full_name": "炽焰天穹",

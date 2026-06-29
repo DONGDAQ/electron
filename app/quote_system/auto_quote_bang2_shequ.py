@@ -1,4 +1,4 @@
-"""BANG2自动报价：从飞书表格读取需求 → 下载HTML → 生成报价单"""
+"""BANG2社区自动报价：从飞书表格读取需求（列J含"社区向"）→ 下载HTML → 生成报价单"""
 from __future__ import annotations
 
 import sys
@@ -7,7 +7,6 @@ from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
 from quote_system.feishu_client import FeishuClient, excel_date_serial_to_date
 from quote_system.projects import resolve_project
@@ -15,125 +14,16 @@ from quote_system.generator import QuoteRequest, generate_quote
 from quote_system.memoq_html import parse_memoq_html, quote_words
 from quote_system.save_path_config import get_save_path
 from quote_system.paths import get_quote_history_dir
+from quote_system.auto_quote_bang2 import find_bang2_rows, LANG_MAP
 
 SPREADSHEET_TOKEN = "Wup0wnUPIiiIr2k8T23c4zASnjd"
 SHEET_ID = "mzekJf"
 
-LANG_MAP = {
-    "日中": "日翻中",
-    "日译中": "日翻中",
-    "日翻中": "日翻中",
-    "日韩": "日翻韩",
-    "日译韩": "日翻韩",
-    "日翻韩": "日翻韩",
-    "日英": "日翻英",
-    "日译英": "日翻英",
-    "日翻英": "日翻英",
-    "日繁": "日翻繁",
-    "日译繁": "日翻繁",
-    "日翻繁": "日翻繁",
-
-    "中韩": "中翻韩",
-    "中译韩": "中翻韩",
-    "中翻韩": "中翻韩",
-    "中英": "中翻英",
-    "中译英": "中翻英",
-    "中翻英": "中翻英",
-    "中繁": "中翻繁",
-    "中译繁": "中翻繁",
-    "中翻繁": "中翻繁",
-}
-
-
-def find_bang2_rows(rows: list[list], filter_col_J: str | None = None) -> list[dict]:
-    """筛选F列为空的行，提取A-E列信息。
-
-    filter_col_J:
-      None  → 不过滤（保留所有行）
-      "社区向" → 只保留列J含有"社区向"的行
-      "!"    → 排除列J含有"社区向"的行（原bang2用）
-    """
-    result = []
-    last_name = None
-    for i, row in enumerate(rows):
-        if i == 0:
-            continue
-        row_num = i + 1
-
-        status = str(row[5]).strip() if len(row) > 5 else ""
-        if status and status != "None":
-            continue
-
-        # 列J过滤（index=9）
-        if filter_col_J is not None:
-            col_J_val = str(row[9]).strip() if len(row) > 9 else ""
-            if filter_col_J == "社区向":
-                if "社区向" not in col_J_val:
-                    continue
-            elif filter_col_J == "!":
-                if "社区向" in col_J_val:
-                    continue
-
-        raw_name = str(row[0]).strip() if len(row) > 0 else ""
-        if not raw_name:
-            continue
-
-        if raw_name == "同上":
-            name = last_name or raw_name
-        else:
-            name = raw_name
-            last_name = raw_name
-
-        raw_lang = row[1] if len(row) > 1 else ""
-        if isinstance(raw_lang, list):
-            langs = [str(l).strip() for l in raw_lang if str(l).strip()]
-        elif isinstance(raw_lang, str) and "," in raw_lang:
-            langs = [s.strip() for s in raw_lang.split(",") if s.strip()]
-        else:
-            langs = [str(raw_lang).strip()] if raw_lang else []
-
-        date_serial = row[2] if len(row) > 2 else None
-        date_str = excel_date_serial_to_date(date_serial) if date_serial else ""
-
-        deliv_serial = row[3] if len(row) > 3 else None
-        deliv_str = excel_date_serial_to_date(deliv_serial) if deliv_serial else ""
-
-        e_val = row[4] if len(row) > 4 else None
-
-        file_token = None
-        file_name = None
-        is_tongshang = False
-
-        if isinstance(e_val, list) and len(e_val) > 0:
-            attach = e_val[0]
-            file_token = attach.get("fileToken")
-            file_name = attach.get("text", "")
-        elif isinstance(e_val, str) and e_val.strip() == "同上":
-            is_tongshang = True
-
-        if not langs:
-            langs = [""]
-
-        for li, lang in enumerate(langs):
-            is_first = li == 0
-            result.append({
-                "row_num": row_num,
-                "req_name": name,
-                "lang": lang,
-                "date_str": date_str,
-                "deliv_str": deliv_str,
-                "file_token": file_token if is_first else None,
-                "file_name": file_name if is_first else None,
-                "is_tongshang": is_tongshang or (not is_first and file_token is not None),
-            })
-
-    return result
-
 
 def run() -> None:
-    project = resolve_project("bang2")
+    project = resolve_project("bang2_shequ")
 
-    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] BANG2报价自动化开始")
+    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] BANG2社区报价自动化开始")
 
     client = FeishuClient(spreadsheet_token=SPREADSHEET_TOKEN, sheet_id=SHEET_ID)
 
@@ -143,9 +33,9 @@ def run() -> None:
         print(f"读取飞书表格失败: {e}")
         return
 
-    all_rows = find_bang2_rows(rows, filter_col_J="!")
+    all_rows = find_bang2_rows(rows, filter_col_J="社区向")
     if not all_rows:
-        print("没有找到待报价的需求")
+        print("没有找到待报价的社区向需求")
         return
 
     # 按A列(文档名)分组，连续同名行归为一组
@@ -163,7 +53,7 @@ def run() -> None:
     if current_group:
         groups.append(current_group)
 
-    print(f"找到 {len(groups)} 个待报价文档")
+    print(f"找到 {len(groups)} 个待报价文档（社区向）")
 
     for group in groups:
         req_name = group[0]["req_name"]
@@ -183,9 +73,9 @@ def run() -> None:
 
 def process_group(client: FeishuClient, project, group: list[dict]):
     req_name = group[0]["req_name"]
-    print(f"\n=== 处理 [{req_name}] ===")
+    print(f"\n=== 处理 [{req_name}]（社区向） ===")
 
-    html_dir = ROOT / "outputs" / "bang2_html"
+    html_dir = ROOT / "outputs" / "bang2_shequ_html"
     html_dir.mkdir(parents=True, exist_ok=True)
 
     # 遍历每行，下载有附件的，"同上"行复用上一个文件
@@ -215,7 +105,6 @@ def process_group(client: FeishuClient, project, group: list[dict]):
         return
 
     try:
-        # 日期
         quote_date = date.today()
         if first_date_row["date_str"]:
             quote_date = datetime.strptime(first_date_row["date_str"], "%Y-%m-%d").date()
@@ -224,8 +113,7 @@ def process_group(client: FeishuClient, project, group: list[dict]):
         if first_date_row["deliv_str"]:
             delivery_date = datetime.strptime(first_date_row["deliv_str"], "%Y-%m-%d").date()
 
-        # 生成报价单
-        save_path = get_save_path("bang2")
+        save_path = get_save_path("bang2_shequ")
         output_path = Path(save_path) if save_path else None
 
         request = QuoteRequest(
@@ -248,7 +136,6 @@ def process_group(client: FeishuClient, project, group: list[dict]):
         billables = [quote_words(s) for s in stats_list]
 
         # 回写飞书
-        file_idx = 0
         billable_idx = 0
         for item in group:
             client.write_cell(item["row_num"], "F", "已报价")
