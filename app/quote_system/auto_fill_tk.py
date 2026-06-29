@@ -85,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="auto-fill-tk", description="TK auto O-Y fill (lark-cli direct)")
     parser.add_argument("--dry-run", action="store_true", help="Scan only, no write")
     parser.add_argument("--tail", type=int, default=0, help="Process last N rows only")
-    parser.add_argument("--blank-stop", type=int, default=30, help="Stop after N consecutive blanks")
+    parser.add_argument("--blank-stop", type=int, default=200, help="Stop after N consecutive blanks")
     parser.add_argument("--max-rows", type=int, default=2000)
     parser.add_argument("--download-dir", default=str(DOWNLOAD_DIR))
     return parser
@@ -194,11 +194,11 @@ def read_sheet_with_attachments(download_dir: Path) -> list[dict]:
     row_count = target["row_count"]
     col_count = target["column_count"]
 
-    # Read in chunks of 100 rows
-    chunk_size = 100
+    # Read N:O columns only (sparse-safe: col_indices is always ['N','O'])
+    chunk_size = 50
     for start_row in range(1, row_count + 1, chunk_size):
         end_row = min(start_row + chunk_size - 1, row_count)
-        range_str = f"A{start_row}:O{end_row}"
+        range_str = f"N{start_row}:O{end_row}"
         print(f"  Reading {range_str}...")
 
         result = _cli(
@@ -217,23 +217,31 @@ def read_sheet_with_attachments(download_dir: Path) -> list[dict]:
             col_indices = rng["col_indices"]
             cells = rng["cells"]
 
+            # 建立列字母→索引的映射，处理 sparse 数据
+            col_pos = {col: idx for idx, col in enumerate(col_indices)}
+
             for ri, row_cells in enumerate(cells):
                 row_num = row_indices[ri]
                 row_data: dict[str, Any] = {"row_num": row_num, "values": {}, "attachments": {}}
 
-                for ci, cell in enumerate(row_cells):
-                    col = col_indices[ci]
-                    if not cell:
-                        row_data["values"][col] = ""
+                # 遍历我们关心的列：N 和 O
+                for col_letter in ["N", "O"]:
+                    ci = col_pos.get(col_letter)
+                    if ci is None or ci >= len(row_cells):
+                        row_data["values"][col_letter] = ""
                         continue
-                    row_data["values"][col] = cell.get("value", "")
+                    cell = row_cells[ci]
+                    if not cell:
+                        row_data["values"][col_letter] = ""
+                        continue
+                    row_data["values"][col_letter] = cell.get("value", "")
 
                     # Extract attachment info from rich_text
                     rt = cell.get("rich_text")
                     if rt:
                         for elem in rt:
                             if elem.get("type") == "attachment":
-                                row_data["attachments"][col] = {
+                                row_data["attachments"][col_letter] = {
                                     "token": elem.get("attachment_token", ""),
                                     "name": elem.get("text", ""),
                                     "mime_type": elem.get("mime_type", ""),
