@@ -94,7 +94,7 @@ PROJECTS: dict[str, ProjectConfig] = {
             "中翻韩": 0.54,
             "摘字": 0.072,
         },
-        generator="bang2_shequ",
+        generator="bang2",
         file_prefix="报价单_《BANG2社区》",
         company="Bilibili",
         sort_order=2,
