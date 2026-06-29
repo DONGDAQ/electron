@@ -32,6 +32,7 @@ if __name__ == "__main__":
     from quote_system.auto_quote_zhan_shuang import run as run_zhan_shuang
     from quote_system.auto_quote_zhan_shuang_feishu import run as run_zhan_shuang_feishu
     from quote_system.auto_quote_bang2 import run as run_bang2
+    from quote_system.auto_quote_bang2_shequ import run as run_bang2_shequ
     from quote_system.auto_quote_4399 import run_scheduled as run_4399
     from quote_system.auto_quote_bilibili import run as run_bilibili
 
@@ -43,8 +44,9 @@ if __name__ == "__main__":
     _run_captured("zhan_shuang", run_zhan_shuang)
     _run_captured("zhan_shuang_feishu", run_zhan_shuang_feishu)
 
-    # BANG2
+    # BANG2 + BANG2社区
     _run_captured("bang2", run_bang2)
+    _run_captured("bang2_shequ", run_bang2_shequ)
 
     # 马娘 + HBR
     for project_key in ["maniang", "hbr"]:
