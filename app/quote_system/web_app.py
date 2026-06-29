@@ -28,7 +28,7 @@ from .auto_quote_zhan_shuang import run as zhan_shuang_auto_quote_run
 from .auto_quote_zhan_shuang_feishu import run as zhan_shuang_feishu_run
 from .auto_quote_bang2 import run as bang2_auto_quote_run
 from .auto_quote_bang2_shequ import run as bang2_shequ_auto_quote_run
-from .auto_quote_mamian import run as mamian_auto_quote_run
+from .auto_quote_bilibili import run as bilibili_auto_quote_run
 from .auto_quote_diezhi import detect_batches, generate_batch_quote, run_for_project, get_delivery_date
 
 
@@ -709,13 +709,13 @@ def bang2_shequ_auto_quote() -> Response:
 
 
 
-@app.post("/mamian/auto-quote")
-def mamian_auto_quote() -> Response:
-    """马娘/HBR自动报价"""
+@app.post("/bilibili/auto-quote")
+def bilibili_auto_quote() -> Response:
+    """Bilibili项目自动报价（马娘/HBR/BANG2/BANG2社区）"""
     project_key = request.form.get("project", "maniang")
     try:
         with capture_stdout() as buffer:
-            mamian_auto_quote_run(project_key)
+            bilibili_auto_quote_run(project_key)
         output = buffer.getvalue()
         _save_auto_quote_log(project_key, output, "success")
         _refresh_report_cache_async()
@@ -1182,10 +1182,10 @@ def open_file():
 # ---- Bilibili 项目账单（马娘/邦邦2/HBR） ----
 
 @api_handler
-@app.get("/api/settlement/mamian/preview")
-def mamian_bill_preview() -> Response:
+@app.get("/api/settlement/bilibili/preview")
+def bilibili_bill_preview() -> Response:
     """获取 Bilibili 项目指定月份的账单预览"""
-    from settlement.generate_settlement_mamian import scan_quotes, _get_bill_config
+    from settlement.generate_settlement_bilibili import scan_quotes, _get_bill_config
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
     project_key = request.args.get("project", "maniang")
@@ -1205,11 +1205,11 @@ def mamian_bill_preview() -> Response:
         "project": project_key,
     })
 @api_handler
-@app.post("/api/settlement/mamian/generate-bill")
-def mamian_generate_bill() -> Response:
+@app.post("/api/settlement/bilibili/generate-bill")
+def bilibili_generate_bill() -> Response:
     """生成 Bilibili 项目月度账单"""
-    _log_operation("mamian_generate_bill", request)
-    from settlement.generate_settlement_mamian import (
+    _log_operation("bilibili_generate_bill", request)
+    from settlement.generate_settlement_bilibili import (
         scan_quotes, MamianSettlementGenerator, _get_bill_config, move_settled,
     )
     data = request.get_json() or {}
@@ -1252,11 +1252,11 @@ def mamian_generate_bill() -> Response:
         "invoice_text": invoice_text,
     })
 @api_handler
-@app.post("/api/settlement/mamian/generate-sealed")
-def mamian_generate_sealed() -> Response:
+@app.post("/api/settlement/bilibili/generate-sealed")
+def bilibili_generate_sealed() -> Response:
     """生成 Bilibili 项目盖章版结算单（对账单确认后调用，总金额自动从对账单读取）"""
-    from settlement.generate_settlement_sealed_mamian import generate_sealed, _read_total_from_bill, _get_sealed_config
-    from settlement.generate_settlement_mamian import _get_bill_config
+    from settlement.generate_settlement_sealed_bilibili import generate_sealed, _read_total_from_bill, _get_sealed_config
+    from settlement.generate_settlement_bilibili import _get_bill_config
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
@@ -2136,7 +2136,7 @@ def _generate_invoice_text(total_amount: float) -> str:
 
 
 def _save_invoice_request(year: int, month: int, project_key: str, text: str) -> Path:
-    from settlement.generate_settlement_mamian import _get_bill_config
+    from settlement.generate_settlement_bilibili import _get_bill_config
     cfg = _get_bill_config(project_key)
     inv_dir = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / cfg["project"]
     inv_dir.mkdir(parents=True, exist_ok=True)
@@ -2146,7 +2146,7 @@ def _save_invoice_request(year: int, month: int, project_key: str, text: str) ->
 
 
 def _load_invoice_request(year: int, month: int, project_key: str) -> str | None:
-    from settlement.generate_settlement_mamian import _get_bill_config
+    from settlement.generate_settlement_bilibili import _get_bill_config
     cfg = _get_bill_config(project_key)
     inv_path = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / cfg["project"] / "invoice_request.txt"
     if inv_path.exists():
@@ -2247,8 +2247,8 @@ def get_invoice_request() -> Response:
 @app.post("/api/invoice-request")
 def generate_invoice_request() -> Response:
     """从对账单读取金额，生成开票请求"""
-    from settlement.generate_settlement_sealed_mamian import _read_total_from_bill, _get_sealed_config
-    from settlement.generate_settlement_mamian import _get_bill_config
+    from settlement.generate_settlement_sealed_bilibili import _read_total_from_bill, _get_sealed_config
+    from settlement.generate_settlement_bilibili import _get_bill_config
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
@@ -2295,7 +2295,7 @@ def _execute_single_auto_quote(project_key: str):
     elif project_key == "bang2_shequ":
         bang2_shequ_auto_quote_run()
     elif project_key in ("maniang", "hbr"):
-        mamian_auto_quote_run(project_key)
+        bilibili_auto_quote_run(project_key)
     elif project_key == "tk":
         from .auto_fill_tk import run_scheduled
         run_scheduled()
@@ -2376,10 +2376,10 @@ SETTLEMENT_WORKBENCH_PROJECTS = [
     {"key": "yihuan_faxing", "name": "异环发行", "company": "完美世界", "type": "perfect_world", "module": "generate_settlement_yh_publish", "subdir": "异环发行"},
     {"key": "zhan_shuang", "name": "战双版更", "company": "库洛游戏", "type": "zhan_shuang", "module": "generate_settlement_zhan_shuang", "subdir": "战双版更"},
     {"key": "zhan_shuang_faxing", "name": "战双发行", "company": "库洛游戏", "type": "zhan_shuang_faxing", "module": "generate_settlement_zhan_shuang_faxing", "subdir": "战双发行"},
-    {"key": "maniang", "name": "马娘", "company": "Bilibili", "type": "mamian", "project_key": "maniang"},
-    {"key": "bang2", "name": "BANG2", "company": "Bilibili", "type": "mamian", "project_key": "bang2"},
-    {"key": "bang2_shequ", "name": "BANG2社区", "company": "Bilibili", "type": "mamian", "project_key": "bang2_shequ"},
-    {"key": "hbr", "name": "炽焰天穹", "company": "Bilibili", "type": "mamian", "project_key": "hbr"},
+    {"key": "maniang", "name": "马娘", "company": "Bilibili", "type": "bilibili", "project_key": "maniang"},
+    {"key": "bang2", "name": "BANG2", "company": "Bilibili", "type": "bilibili", "project_key": "bang2"},
+    {"key": "bang2_shequ", "name": "BANG2社区", "company": "Bilibili", "type": "bilibili", "project_key": "bang2_shequ"},
+    {"key": "hbr", "name": "炽焰天穹", "company": "Bilibili", "type": "bilibili", "project_key": "hbr"},
     {"key": "liandishenkong", "name": "恋与深空", "company": "叠纸", "type": "diezhi"},
     {"key": "shining_nikki", "name": "闪暖", "company": "叠纸", "type": "diezhi"},
     {"key": "niki_xinzuo", "name": "ニキ新作", "company": "叠纸", "type": "diezhi"},
@@ -2521,8 +2521,8 @@ def _settle_generate_zs(module_name, year, month, subdir, multi_month):
     }
 
 
-def _settle_preview_mamian(year, month, project_key):
-    from settlement.generate_settlement_mamian import scan_quotes
+def _settle_preview_bilibili(year, month, project_key):
+    from settlement.generate_settlement_bilibili import scan_quotes
     records = scan_quotes(year, month, project_key)
     total_words = sum(r.get("word_count", 0) for r in records)
     total_amount = sum(r.get("total_price", 0.0) for r in records)
@@ -2530,8 +2530,8 @@ def _settle_preview_mamian(year, month, project_key):
     return {"count": len(records), "total_words": total_words, "total_amount": round(total_amount, 2), "total_amount_pretax": total_amount_pretax}
 
 
-def _settle_generate_mamian(year, month, project_key, skip_move=False):
-    from settlement.generate_settlement_mamian import scan_quotes, MamianSettlementGenerator, BILL_CONFIG, move_settled
+def _settle_generate_bilibili(year, month, project_key, skip_move=False):
+    from settlement.generate_settlement_bilibili import scan_quotes, MamianSettlementGenerator, BILL_CONFIG, move_settled
     cfg = BILL_CONFIG.get(project_key, {})
     project_name = cfg.get("project", project_key)
     output_dir = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / project_name
@@ -2670,8 +2670,8 @@ def settlement_workbench_preview() -> Response:
                 multi = proj["type"] == "zhan_shuang_faxing"
                 info = _settle_preview_zs(proj["module"], year, month, multi)
                 results.append({**proj, **info, "status": "has_data" if info["count"] > 0 else "empty"})
-            elif proj["type"] == "mamian":
-                info = _settle_preview_mamian(year, month, proj["project_key"])
+            elif proj["type"] == "bilibili":
+                info = _settle_preview_bilibili(year, month, proj["project_key"])
                 results.append({**proj, **info, "status": "has_data" if info["count"] > 0 else "empty"})
             elif proj["type"] == "4399":
                 info = _settle_preview_4399(year, month)
@@ -2719,8 +2719,8 @@ def settlement_workbench_generate() -> Response:
                 results[key] = _settle_generate_zs(proj["module"], year, month, proj["subdir"], False)
             elif proj["type"] == "zhan_shuang_faxing":
                 results[key] = _settle_generate_zs(proj["module"], year, month, proj["subdir"], True)
-            elif proj["type"] == "mamian":
-                results[key] = _settle_generate_mamian(year, month, proj["project_key"], skip_move=skip_move)
+            elif proj["type"] == "bilibili":
+                results[key] = _settle_generate_bilibili(year, month, proj["project_key"], skip_move=skip_move)
             elif proj["type"] == "4399":
                 rate = float(exchange_rate) if exchange_rate else 0
                 results[key] = _settle_generate_4399(year, month, rate)

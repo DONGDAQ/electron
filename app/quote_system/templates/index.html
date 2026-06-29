@@ -149,7 +149,7 @@
           </button>
           {% endif %}
           {% if selected_project.key in ['maniang', 'hbr'] %}
-          <button class="primary-button" id="mamianAutoQuoteBtn" onclick="runMamianAutoQuote()">
+          <button class="primary-button" id="bilibiliAutoQuoteBtn" onclick="runBilibiliAutoQuote()">
             <i data-lucide="bot"></i>
             自动报价
           </button>
@@ -1921,8 +1921,8 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
     {% endif %}
 
     {% if selected_project.key in ['maniang', 'hbr'] %}
-    function runMamianAutoQuote() {
-      const btn = document.getElementById('mamianAutoQuoteBtn');
+    function runBilibiliAutoQuote() {
+      const btn = document.getElementById('bilibiliAutoQuoteBtn');
       const projectKey = document.getElementById('currentProject').value;
       btn.disabled = true;
       btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
@@ -1930,7 +1930,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
 
       const formData = new URLSearchParams();
       formData.append('project', projectKey);
-      fetch('/mamian/auto-quote', { method: 'POST', body: formData })
+      fetch('/bilibili/auto-quote', { method: 'POST', body: formData })
         .then(response => response.json())
         .then(data => {
           btn.disabled = false;
@@ -2095,9 +2095,9 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
         'zhan_shuang_faxing': { preview: '/api/settlement_zhan_shuang_faxing/preview', generate: '/api/settlement_zhan_shuang_faxing/generate', multiMonth: true },
         'yihuan_nei': { preview: '/api/settlement_yh_games/preview', generate: '/api/settlement_yh_games/generate' },
         'yihuan_faxing': { preview: '/api/settlement_yh_publish/preview', generate: '/api/settlement_yh_publish/generate' },
-        'maniang': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
-        'bang2': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
-        'hbr': { preview: '/api/settlement/mamian/preview', generate: '/api/settlement/mamian/generate-bill', bill: true },
+        'maniang': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
+        'bang2': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
+        'hbr': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
         'liandishenkong': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
         'shining_nikki': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
         'niki_xinzuo': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
@@ -2340,9 +2340,9 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
 
           const tbody = document.getElementById('settlePreviewBody');
           tbody.innerHTML = '';
-          var mamianTotal = 0;
+          var bilibiliTotal = 0;
           result.data.forEach(function(r, i) {
-            mamianTotal += r.total_price || 0;
+            bilibiliTotal += r.total_price || 0;
             const tr = document.createElement('tr');
             tr.innerHTML = '<td>' + (i+1) + '</td>'
               + '<td title="' + escHtml(r.filename || '') + '">' + escHtml(r.filename || '') + '</td>'
@@ -2358,7 +2358,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           totalTr.style.fontWeight = '600';
           totalTr.style.borderTop = '2px solid var(--line)';
           totalTr.innerHTML = '<td colspan="2">合计</td><td></td><td></td><td></td><td></td>'
-            + '<td class="r">' + mamianTotal.toFixed(2) + '</td>';
+            + '<td class="r">' + bilibiliTotal.toFixed(2) + '</td>';
           tbody.appendChild(totalTr);
         } else if (projKey === 'zhan_shuang') {
           const total = result.data.reduce(function(s, r) { return s + (parseFloat(r.word_count) || 0); }, 0);
@@ -2752,7 +2752,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
       btn.disabled = true;
       btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
       lucide.createIcons();
-      fetch('/api/settlement/mamian/generate-sealed', {
+      fetch('/api/settlement/bilibili/generate-sealed', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({year: parseInt(year), month: parseInt(month), project: projKey}),
       })
@@ -3321,9 +3321,9 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'yihuan_faxing',name:'异环发行',company:'完美世界',type:'pw'},
       {key:'zhan_shuang',name:'战双版更',company:'库洛游戏',type:'zs'},
       {key:'zhan_shuang_faxing',name:'战双发行',company:'库洛游戏',type:'zsfx'},
-      {key:'maniang',name:'马娘',company:'Bilibili',type:'mamian'},
-      {key:'bang2',name:'BANG2',company:'Bilibili',type:'mamian'},
-      {key:'hbr',name:'炽焰天穹',company:'Bilibili',type:'mamian'},
+      {key:'maniang',name:'马娘',company:'Bilibili',type:'bilibili'},
+      {key:'bang2',name:'BANG2',company:'Bilibili',type:'bilibili'},
+      {key:'hbr',name:'炽焰天穹',company:'Bilibili',type:'bilibili'},
       {key:'liandishenkong',name:'恋与深空',company:'叠纸',type:'diezhi'},
       {key:'shining_nikki',name:'闪暖',company:'叠纸',type:'diezhi'},
       {key:'niki_xinzuo',name:'ニキ新作',company:'叠纸',type:'diezhi'},

@@ -119,7 +119,7 @@ def _parse_languages(val) -> list[str]:
     return ["日翻中"]
 
 
-TEMP_DIR = ROOT / "outputs" / "mamian_html"
+TEMP_DIR = ROOT / "outputs" / "bilibili_html"
 
 
 def process_one(client: FeishuClient, project: ProjectConfig, work_dir: Path, item: dict):

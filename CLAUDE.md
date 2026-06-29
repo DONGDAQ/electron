@@ -94,7 +94,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 ### 1. 创建结算生成模块
 
-在 `app/settlement/` 下新建 `generate_settlement_<project>.py`，参考 `generate_settlement.py`（幻塔）或 `generate_settlement_mamian.py`（马娘）：
+在 `app/settlement/` 下新建 `generate_settlement_<project>.py`，参考 `generate_settlement.py`（幻塔）或 `generate_settlement_bilibili.py`（Bilibili项目）：
 
 ```python
 # 必须实现的函数

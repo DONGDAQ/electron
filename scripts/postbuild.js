@@ -55,7 +55,7 @@ const filesToSync = [
   'quote_system/static/styles.css',
   'quote_system/templates/index.html',
   'quote_system/templates/report.html',
-  'settlement/generate_settlement_mamian.py',
+  'settlement/generate_settlement_bilibili.py',
   'auto_quote_scheduled.py',
   'watchdog_task.vbs',
 ];
