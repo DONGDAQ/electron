@@ -366,11 +366,20 @@
       }
     }
 
+    let _pollStart = 0;
     function pollRefreshStatus() {
+      if (!_pollStart) _pollStart = Date.now();
+      if (Date.now() - _pollStart > 30000) {
+        resetRefreshBtn();
+        showToast('刷新超时，请重试', true);
+        _pollStart = 0;
+        return;
+      }
       fetch('/api/report-dashboard/refresh-status').then(r => r.json()).then(data => {
         if (data.running) {
           setTimeout(pollRefreshStatus, 2000);
         } else {
+          _pollStart = 0;
           resetRefreshBtn();
           updateCacheTime(data.sync_time);
           // 刷新仪表盘 + 执行记录

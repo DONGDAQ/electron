@@ -426,10 +426,10 @@ def sync_tk_data() -> dict:
                     except (ValueError, IndexError):
                         pass
 
-                if is_current_or_future:
-                    unsettled.append(entry)
-                elif "已请款" in status:
+                if "已请款" in status or "已结算" in status:
                     settled.append(entry)
+                elif is_current_or_future:
+                    unsettled.append(entry)
                 else:
                     unsettled.append(entry)
 

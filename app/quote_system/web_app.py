@@ -462,6 +462,7 @@ def report_dashboard_refresh() -> Response:
             return jsonify({"status": "running", "message": "正在刷新中..."})
         REPORT_REFRESH_RUNNING = True
     def _do_refresh():
+        global REPORT_REFRESH_RUNNING
         try:
             from .auto_fill_tk import sync_tk_data
             sync_tk_data()

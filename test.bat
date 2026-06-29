@@ -20,8 +20,13 @@ echo 修改代码后会自动热更新，无需重启
 echo ==============================================
 echo.
 
+:: 清除可能导致 Electron 启动失败的 Node 选项
+set NODE_OPTIONS=
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*.exe' -and $_.CommandLine -like '*quote_system.web_app*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 
-npm start
+:: 直接调用 electron.exe，绕过损坏的 index.js
+set ELECTRON_PATH=%~dp0node_modules\electron\dist\electron.exe
+"%ELECTRON_PATH%" .
 
 pause

@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win portable && node scripts/postbuild.js",
+    "build": "npm run build-flask && node scripts/prebuild.js && electron-builder --win portable && node scripts/postbuild.js",
     "build-flask": "cd app && C:/Users/admin/.workbuddy/binaries/python/versions/3.13.12/python.exe -m PyInstaller --distpath ../dist/flask_build --workpath ../dist/flask_work -y flask_server.spec",
     "check-js": "node scripts/check-template-js.js"
   },
@@ -20,18 +20,30 @@
       {
         "from": "app",
         "to": "app",
-        "filter": ["**/*", "!outputs/**", "!报价/**", "!结算/**", "!汇总/**", "!**/*.log", "!**/__pycache__/**"]
+        "filter": [
+          "**/*",
+          "!outputs/**",
+          "!报价/**",
+          "!结算/**",
+          "!汇总/**",
+          "!**/*.log",
+          "!**/__pycache__/**"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "requestedExecutionLevel": "asInvoker"

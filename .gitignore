@@ -28,6 +28,7 @@ icon.png
 generate_icon.py
 .playwright-mcp/
 dist/
+app/flask_server/
 .workbuddy/
 251111-Character-Confirmed-CN-预估日期.html
 test_report.html
