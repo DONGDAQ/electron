@@ -142,7 +142,7 @@
             生成报价单
           </button>
           {% endif %}
-          {% if selected_project.generator == 'bang2' %}
+          {% if selected_project.key == 'bang2' or selected_project.key == 'bang2_shequ' %}
           <button class="primary-button" id="bang2AutoQuoteBtn" onclick="runBang2AutoQuote()">
             <i data-lucide="bot"></i>
             自动报价
@@ -1889,21 +1889,22 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
     });
     {% endif %}
 
-    {% if selected_project.generator == 'bang2' %}
+    {% if selected_project.key == 'bang2' or selected_project.key == 'bang2_shequ' %}
     function runBang2AutoQuote() {
+      const pk = document.getElementById('currentProject').value;
       const btn = document.getElementById('bang2AutoQuoteBtn');
       btn.disabled = true;
       btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 报价中...';
       lucide.createIcons();
 
-      fetch('/bang2/auto-quote', { method: 'POST' })
+      fetch('/' + pk + '/auto-quote', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
           btn.disabled = false;
           btn.innerHTML = '<i data-lucide="bot"></i> 自动报价';
           lucide.createIcons();
           if (data.status === 'success') {
-            showToast('BANG2自动报价完成！');
+            showToast((pk === 'bang2' ? 'BANG2' : 'BANG2社区') + '自动报价完成！');
             showMessages('<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:400px;overflow-y:auto;">' + data.message + '</pre>', 'success');
             loadQuoteHistory();
           } else {
@@ -2025,7 +2026,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           var ms = getSettleMonths();
           var m = ms.length > 0 ? ms.join(',') : document.getElementById('settleMonth').value;
           var pk = document.getElementById('currentProject').value;
-          var isBillProj = pk === 'maniang' || pk === 'bang2' || pk === 'hbr';
+          var isBillProj = pk === 'maniang' || pk === 'bang2' || pk === 'hbr' || pk === 'bang2_shequ';
           var isTk = pk === 'tk';
           var isPerfectWorld = pk === 'huanta' || pk === 'yihuan_nei' || pk === 'yihuan_faxing';
           document.getElementById('batchSettleBtn').style.display = isPerfectWorld ? '' : 'none';
@@ -2097,6 +2098,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
         'yihuan_faxing': { preview: '/api/settlement_yh_publish/preview', generate: '/api/settlement_yh_publish/generate' },
         'maniang': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
         'bang2': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
+        'bang2_shequ': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
         'hbr': { preview: '/api/settlement/bilibili/preview', generate: '/api/settlement/bilibili/generate-bill', bill: true },
         'liandishenkong': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
         'shining_nikki': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
@@ -2189,7 +2191,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
       var pk = document.getElementById('currentProject').value;
       if (y && m) {
         loadSettleHistory(y, m, pk);
-        if (pk === 'maniang' || pk === 'bang2' || pk === 'hbr') {
+        if (pk === 'maniang' || pk === 'bang2' || pk === 'hbr' || pk === 'bang2_shequ') {
           checkExistingBill(y, ms[0], pk);
           loadInvoiceRequest(y, ms[0], pk);
         } else if (pk === 'liandishenkong' || pk === 'shining_nikki' || pk === 'niki_xinzuo') {
@@ -2886,7 +2888,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
     }
 
     async function checkExistingBill(year, month, projKey) {
-      if (projKey !== 'maniang' && projKey !== 'bang2' && projKey !== 'hbr') return;
+      if (projKey !== 'maniang' && projKey !== 'bang2' && projKey !== 'hbr' && projKey !== 'bang2_shequ') return;
       try {
         const resp = await fetch('/api/settlement-files?project=' + encodeURIComponent(projKey) + '&year=' + year + '&month=' + month);
         const result = await resp.json();
@@ -3213,6 +3215,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'zhan_shuang',name:'战双版更',company:'库洛游戏'},
       {key:'zhan_shuang_feishu',name:'战双发行',company:'库洛游戏'},
       {key:'bang2',name:'BANG2',company:'Bilibili'},
+      {key:'bang2_shequ',name:'BANG2社区',company:'Bilibili'},
       {key:'maniang',name:'马娘',company:'Bilibili'},
       {key:'hbr',name:'炽焰天穹',company:'Bilibili'},
       {key:'tk',name:'TK',company:'Bilibili'},
@@ -3323,6 +3326,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'zhan_shuang_faxing',name:'战双发行',company:'库洛游戏',type:'zsfx'},
       {key:'maniang',name:'马娘',company:'Bilibili',type:'bilibili'},
       {key:'bang2',name:'BANG2',company:'Bilibili',type:'bilibili'},
+      {key:'bang2_shequ',name:'BANG2社区',company:'Bilibili',type:'bilibili'},
       {key:'hbr',name:'炽焰天穹',company:'Bilibili',type:'bilibili'},
       {key:'liandishenkong',name:'恋与深空',company:'叠纸',type:'diezhi'},
       {key:'shining_nikki',name:'闪暖',company:'叠纸',type:'diezhi'},

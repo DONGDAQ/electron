@@ -2050,6 +2050,7 @@ def settlement_files() -> Response:
     bill_project_dirs = {
         "maniang": "马娘",
         "bang2": "bang2",
+        "bang2_shequ": "bang2社区",
         "hbr": "HBR",
     }
     perfect_world_dirs = {
