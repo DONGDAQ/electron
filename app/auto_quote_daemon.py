@@ -85,22 +85,48 @@ def _run():
         _notify_dingtalk("自动报价异常", str(e))
 
 
+CHECKPOINT_FILE = LOG_DIR / "daemon_checkpoint.json"
+
+
+def _load_checkpoint() -> str | None:
+    """读取上次执行日期，文件不存在或损坏返回 None"""
+    try:
+        if CHECKPOINT_FILE.exists():
+            return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8")).get("date")
+    except Exception:
+        pass
+    return None
+
+
+def _save_checkpoint(date_str: str):
+    """写入执行日期"""
+    try:
+        CHECKPOINT_FILE.write_text(json.dumps({"date": date_str}), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def main():
     LOG.info("守护进程启动")
-    last_run_date = None
+    last_run_date_str = _load_checkpoint()
+    if last_run_date_str:
+        LOG.info(f"上次执行日期: {last_run_date_str}")
 
     while True:
         try:
             now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
 
-            if now.weekday() < 5 and last_run_date != now.date():
+            if now.weekday() < 5 and last_run_date_str != today_str:
                 if now.hour == 9 and now.minute < 5:
                     _run()
-                    last_run_date = now.date()
+                    last_run_date_str = today_str
+                    _save_checkpoint(today_str)
                 elif now.hour >= 10 and now.hour < 12:
                     LOG.info(f"补执行（错过9点窗口，当前 {now.strftime('%H:%M')}）")
                     _run()
-                    last_run_date = now.date()
+                    last_run_date_str = today_str
+                    _save_checkpoint(today_str)
 
             time.sleep(30)
         except KeyboardInterrupt:
