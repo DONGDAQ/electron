@@ -23,8 +23,11 @@ UNIT_PRICES = {
     "英-韩": 0.72,
 }
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_DIR = BASE_DIR / "app" / "模板" / "结算模板"
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_DIR = BASE_DIR / "模板" / "结算模板"
 
 
 def read_feishu_data(year, months):

@@ -164,6 +164,13 @@ def handle_bad_request(exc):
     return jsonify({"status": "error", "message": str(exc)}), 400
 
 
+@app.errorhandler(Exception)
+def handle_unhandled(exc):
+    """全局 500 兜底：返回 JSON 而非 HTML"""
+    traceback.print_exc()
+    return jsonify({"status": "error", "message": str(exc)}), 500
+
+
 _BLOCKED_PATHS = [
     re.compile(r'^[A-Za-z]:[/\\]test(?:[/\\].*)?$', re.IGNORECASE),
     re.compile(r'^[A-Za-z]:[/\\]tmp(?:[/\\].*)?$', re.IGNORECASE),
@@ -1583,7 +1590,7 @@ def settlement_zhan_shuang_generate() -> Response:
     _save_kuro_invoice_request(year, month, "战双版更", invoice_text)
 
     quote_dir = get_quote_history_dir() / "库洛游戏" / "战双版更"
-    _move_settled_quotes(quote_dir, [r['file_name'] for r in records if r.get('file_name')], year, month)
+    _move_settled_quotes(quote_dir, [r['req_name'] for r in records if r.get('req_name')], year, month)
     _update_zs_status(records)
     _refresh_report_cache_async()
 
@@ -2132,7 +2139,7 @@ def _generate_invoice_text(total_amount: float) -> str:
         f"电话：{INVOICE_PHONE}\n"
         f"银行账号：{INVOICE_ACCOUNT}\n"
         f"开户银行：{INVOICE_BANK}\n"
-        f"金额：{total_amount:.2f}"
+        f"金额：{tax_amount:.2f}"
     )
 
 
@@ -2156,6 +2163,7 @@ def _load_invoice_request(year: int, month: int, project_key: str) -> str | None
 
 
 def _generate_kuro_invoice_text(total_amount: float) -> str:
+    tax_amount = total_amount * 1.06  # 6% 增值税
     return (
         f"贵司名称：{KURO_INVOICE_COMPANY}\n"
         f"纳税人识别号：{KURO_INVOICE_TAX_ID}\n"
@@ -2164,7 +2172,7 @@ def _generate_kuro_invoice_text(total_amount: float) -> str:
         f"电话：{KURO_INVOICE_PHONE}\n"
         f"银行账号：{KURO_INVOICE_BANK_ACCOUNT}\n"
         f"开户银行：{KURO_INVOICE_BANK}\n"
-        f"金额：{total_amount:.2f}"
+        f"金额：{tax_amount:.2f}"
     )
 
 
@@ -2198,15 +2206,16 @@ def _update_zs_status(records):
 
 
 def _move_settled_quotes(quote_dir, file_names, year, month):
-    if not file_names:
-        return
     src_dir = Path(quote_dir)
+    if not src_dir.exists():
+        return
     settled_dir = src_dir / "已结算" / f"{year}年{month}月"
     settled_dir.mkdir(parents=True, exist_ok=True)
-    for fname in file_names:
-        src = src_dir / fname
-        if src.exists():
-            shutil.move(str(src), str(settled_dir / fname))
+    for name in file_names:
+        matches = list(src_dir.glob(f"*{name}*"))
+        for src in matches:
+            if src.is_file():
+                shutil.move(str(src), str(settled_dir / src.name))
 
 
 def _get_quote_names_in_file(xlsx_path: Path) -> set[str]:

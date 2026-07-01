@@ -16,8 +16,11 @@ SPREADSHEET_TOKEN = "Wup0wnUPIiiIr2k8T23c4zASnjd"
 SHEET_ID = "WmpiFq"
 UNIT_PRICE = 0.64
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_DIR = BASE_DIR / "app" / "模板" / "结算模板"
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_DIR = BASE_DIR / "模板" / "结算模板"
 
 
 def read_feishu_data(year, month):

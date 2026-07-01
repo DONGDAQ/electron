@@ -1,18 +1,21 @@
 """叠纸3项目（恋与深空/闪暖/ニキ新作）月度结算单生成"""
 import os
+import sys
 import shutil
 from datetime import datetime
 from pathlib import Path
 import openpyxl
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-import sys as _sys
-_sys.path.insert(0, str(BASE_DIR / "app"))
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(BASE_DIR / "app") if not getattr(sys, 'frozen', False) else str(BASE_DIR))
 from quote_system.paths import get_quote_history_dir, get_settlement_dir
 from settlement._com_utils import com_excel
 
 QUOTE_BASE = get_quote_history_dir()
-TEMPLATE_PATH = BASE_DIR / "app" / "模板" / "结算模板" / "【大连游者之家】结算单_《X3.X6.闪暖》2026年4月模板.xlsx"
+TEMPLATE_PATH = BASE_DIR / "模板" / "结算模板" / "【大连游者之家】结算单_《X3.X6.闪暖》2026年4月模板.xlsx"
 OUTPUT_BASE = get_settlement_dir()
 
 PROJECTS = {
