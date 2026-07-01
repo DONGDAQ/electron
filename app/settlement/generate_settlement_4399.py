@@ -18,8 +18,11 @@ from quote_system.paths import get_settlement_dir
 from quote_system.utils import excel_serial_to_date
 from settlement._com_utils import com_excel
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_DIR = ROOT / "app" / "模板" / "结算模板"
+if getattr(sys, 'frozen', False):
+    ROOT = Path(sys._MEIPASS)
+else:
+    ROOT = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 
 SETTLEMENT_TEMPLATE = "01【结算单】-2026年4月份翻译费用4399模板.xlsx"
 INVOICE_TEMPLATE = "01Invoice-2026年4月份翻译费用4399模板.xlsx"
