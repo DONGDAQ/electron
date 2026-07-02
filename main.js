@@ -290,9 +290,9 @@ function startFlaskServer() {
   const forcePython = !app.isPackaged;
   let useExe = !forcePython;
 
+  // onedir 模式优先，其次 onefile
+  let flaskExe = path.join(appDir, 'flask_server', 'flask_server.exe');
   if (useExe) {
-    // onedir 模式优先，其次 onefile
-    let flaskExe = path.join(appDir, 'flask_server', 'flask_server.exe');
     useExe = fs.existsSync(flaskExe);
     if (!useExe) {
       flaskExe = path.join(appDir, 'flask_server.exe');
