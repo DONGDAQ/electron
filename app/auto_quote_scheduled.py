@@ -1,5 +1,6 @@
 """定时自动报价：每天自动检查项目的新需求并生成报价单"""
 import io
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -7,6 +8,34 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs" / "auto_quote"
 FILL_LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs"
+
+# ---- 防止并发执行 ----
+LOCK_FILE = LOG_DIR / ".auto_quote.lock"
+
+def _acquire_lock():
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if LOCK_FILE.exists():
+        try:
+            old_pid = int(LOCK_FILE.read_text().strip())
+            import ctypes
+            h = ctypes.windll.kernel32.OpenProcess(0x0400, False, old_pid)
+            if h:
+                ctypes.windll.kernel32.CloseHandle(h)
+                print(f"[LOCK] 已有实例运行中 (PID={old_pid})，退出")
+                return False
+        except (ValueError, OSError):
+            pass
+    LOCK_FILE.write_text(str(os.getpid()))
+    return True
+
+def _release_lock():
+    try:
+        LOCK_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+if not _acquire_lock():
+    sys.exit(0)
 
 from quote_system.utils import save_auto_quote_log, write_fill_meta
 
@@ -77,3 +106,5 @@ if __name__ == "__main__":
         sync_report_cache()
     except Exception as e:
         print(f"报告缓存同步失败: {e}")
+
+    _release_lock()
