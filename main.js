@@ -286,12 +286,18 @@ function startFlaskServer() {
   const appDir = getAppDir();
   console.log('应用目录:', appDir);
 
-  // onedir 模式优先，其次 onefile
-  let flaskExe = path.join(appDir, 'flask_server', 'flask_server.exe');
-  let useExe = fs.existsSync(flaskExe);
-  if (!useExe) {
-    flaskExe = path.join(appDir, 'flask_server.exe');
+  // 开发模式判断：非打包状态（electron .）用 Python 源码；打包后用 flask_server.exe
+  const forcePython = !app.isPackaged;
+  let useExe = !forcePython;
+
+  if (useExe) {
+    // onedir 模式优先，其次 onefile
+    let flaskExe = path.join(appDir, 'flask_server', 'flask_server.exe');
     useExe = fs.existsSync(flaskExe);
+    if (!useExe) {
+      flaskExe = path.join(appDir, 'flask_server.exe');
+      useExe = fs.existsSync(flaskExe);
+    }
   }
 
   if (useExe) {
@@ -302,9 +308,12 @@ function startFlaskServer() {
       stdio: ['pipe', 'pipe', 'pipe']
     });
   } else {
-    const pythonPath = findPython();
-    console.log('Python路径:', pythonPath);
-    const env = Object.create(process.env);
+    // 开发模式：直接用系统 Python 3.12（不用 findPython 避免解析到 managed Python）
+    const pythonPath = forcePython
+      ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Python', 'Python312', 'python.exe')
+      : findPython();
+    console.log('Python路径:', pythonPath, forcePython ? '(开发模式)' : '');
+    const env = { ...process.env };
     env.PYTHONPATH = appDir;
     pythonProcess = spawn(pythonPath, ['-m', 'quote_system.web_app'], {
       cwd: appDir,
@@ -374,6 +383,7 @@ function waitForFlask(callback) {
 
 function findPython() {
   const possiblePaths = [
+    path.join(process.env.LOCALAPPDATA, 'Programs', 'Python', 'Python312', 'python.exe'),
     path.join(process.env.LOCALAPPDATA, 'Python', 'pythoncore-3.14-64', 'python.exe'),
     'python',
     'python3',

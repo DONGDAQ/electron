@@ -2089,6 +2089,8 @@ def settlement_files() -> Response:
         search_dir = settlement_dir / f"{year}年{month_display}月" / "4399"
     elif project_key == "zulong":
         search_dir = settlement_dir / f"{year}年{month_display}月" / "祖龙"
+    elif project_key == "md":
+        search_dir = settlement_dir / f"{year}年{month_display}月" / "电心" / "MD"
     else:
         search_dir = settlement_dir
 
@@ -2096,7 +2098,7 @@ def settlement_files() -> Response:
         for f in sorted(search_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not f.is_file():
                 continue
-            if project_key not in bill_project_dirs and project_key not in perfect_world_dirs and project_key not in kuluo_dirs and project_key != "tk" and year and month:
+            if project_key not in bill_project_dirs and project_key not in perfect_world_dirs and project_key not in kuluo_dirs and project_key not in ("tk", "md") and year and month:
                 ym = f"{year}年{month_display}月" if month else str(year)
                 if ym not in f.name and f"{year}" not in f.name:
                     continue
@@ -2395,6 +2397,7 @@ SETTLEMENT_WORKBENCH_PROJECTS = [
     {"key": "niki_xinzuo", "name": "ニキ新作", "company": "叠纸", "type": "diezhi"},
     {"key": "tk", "name": "TK项目", "company": "Bilibili", "type": "tk"},
     {"key": "4399", "name": "4399", "company": "4399", "type": "4399"},
+    {"key": "md", "name": "MD", "company": "电心", "type": "md"},
 ]
 
 
@@ -2688,6 +2691,11 @@ def settlement_workbench_preview() -> Response:
                 results.append({**proj, **info, "status": "has_data" if info["count"] > 0 else "empty"})
             elif proj["type"] == "tk":
                 results.append({**proj, "count": 0, "total_words": 0, "total_amount": 0, "status": "manual"})
+            elif proj["type"] == "md":
+                from settlement.generate_settlement_md import read_feishu_data as read_md
+                records = read_md(year, month)
+                total_words = sum(r['word_count'] for r in records)
+                results.append({**proj, "count": len(records), "total_words": total_words, "total_amount": round(total_words * 0.424, 2), "status": "has_data" if len(records) > 0 else "empty"})
         except Exception as e:
             results.append({**proj, "count": 0, "total_words": 0, "total_amount": 0, "status": "error", "error": str(e)})
 
@@ -2736,11 +2744,92 @@ def settlement_workbench_generate() -> Response:
                 results[key] = _settle_generate_4399(year, month, rate)
             elif proj["type"] == "tk":
                 results[key] = _settle_generate_tk(year, month)
+            elif proj["type"] == "md":
+                from settlement.generate_settlement_md import read_feishu_data as read_md, generate_settlement_confirm, generate_settlement_stamp, generate_invoice
+                records = read_md(year, month)
+                if not records:
+                    results[key] = {"status": "error", "message": f"{year}年{month}月没有MD交付记录"}
+                    continue
+                output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心" / "MD"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                confirm_path = generate_settlement_confirm(records, year, month, output_dir)
+                _, stamp_pdf = generate_settlement_stamp(records, year, month, output_dir)
+                _, invoice_pdf = generate_invoice(records, year, month, output_dir)
+                total_amount = sum(r['word_count'] for r in records) * 0.424
+                results[key] = {
+                    "status": "success",
+                    "confirm": {"path": str(confirm_path), "name": confirm_path.name},
+                    "stamp_pdf": {"path": str(stamp_pdf), "name": stamp_pdf.name},
+                    "invoice_pdf": {"path": str(invoice_pdf), "name": invoice_pdf.name},
+                    "total_amount": round(total_amount, 2),
+                    "count": len(records),
+                }
         except Exception as e:
             results[key] = {"status": "error", "message": f"{type(e).__name__}: {str(e)}"}
 
     _refresh_report_cache_async()
     return jsonify({"status": "success", "results": results, "year": year, "month": month})
+# ======================== MD结算 ========================
+@app.get("/api/settlement_md/preview")
+def settlement_md_preview() -> Response:
+    """预览MD结算数据"""
+    from settlement.generate_settlement_md import read_feishu_data
+    year = int(request.args.get("year", 0))
+    month = int(request.args.get("month", 0))
+    validate_year_month(year, month)
+
+    records = read_feishu_data(year, month)
+    total = sum(r['word_count'] for r in records)
+    return jsonify({
+        "status": "success",
+        "data": records,
+        "count": len(records),
+        "total_words": total,
+    })
+
+
+@app.post("/api/settlement_md/generate")
+def settlement_md_generate() -> Response:
+    """生成MD结算单（确认版Excel + 盖章版PDF + 請求書PDF）"""
+    sys.modules.pop('settlement.generate_settlement_md', None)
+    from settlement.generate_settlement_md import (
+        read_feishu_data, generate_settlement_confirm, generate_settlement_stamp, generate_invoice
+    )
+    data = request.get_json() or {}
+    year = int(data.get("year", 0))
+    month = int(data.get("month", 0))
+    validate_year_month(year, month)
+
+    records = read_feishu_data(year, month)
+    if not records:
+        return jsonify({"status": "error", "message": f"{year}年{month}月没有MD交付记录"}), 404
+
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心" / "MD"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 生成确认版Excel
+    confirm_path = generate_settlement_confirm(records, year, month, output_dir)
+
+    # 生成盖章版PDF（Excel 已删除）
+    _, stamp_pdf = generate_settlement_stamp(records, year, month, output_dir)
+
+    # 生成請求書PDF（Excel 已删除）
+    _, invoice_pdf = generate_invoice(records, year, month, output_dir)
+
+    total_amount = sum(r['word_count'] for r in records) * 0.424
+
+    return jsonify({
+        "status": "success",
+        "message": f"已生成 {len(records)} 条记录的MD结算单",
+        "count": len(records),
+        "confirm": {"path": str(confirm_path), "name": confirm_path.name},
+        "stamp_pdf": {"path": str(stamp_pdf), "name": stamp_pdf.name},
+        "invoice_pdf": {"path": str(invoice_pdf), "name": invoice_pdf.name},
+        "total_amount": round(total_amount, 2),
+        "total_words": sum(r['word_count'] for r in records),
+    })
+
+
 # ======================== 结算文件树 ========================
 
 

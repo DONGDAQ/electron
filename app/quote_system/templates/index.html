@@ -101,8 +101,8 @@
     <section class="workspace">
       <header class="topbar">
         <div style="display:flex;align-items:center;gap:0;">
-          <button class="mode-tab active" id="quoteModeTab" onclick="switchMode('quote')"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>报价工作台</button>
-          <button class="mode-tab" id="settleModeTab" onclick="switchMode('settle')"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>结算工作台</button>
+          <button class="mode-tab active" id="quoteModeTab" onclick="switchMode('quote')"{% if selected_project.generator == 'zulong_settlement' or selected_project.generator == 'md_settlement' %} style="display:none;"{% endif %}>报价工作台</button>
+          <button class="mode-tab{% if selected_project.generator == 'md_settlement' %} active{% endif %}" id="settleModeTab" onclick="switchMode('settle')"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>结算工作台</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;" id="topbarActions">
           <a class="ghost-button" href="{{ url_for('index', project=selected_project.key) }}">
@@ -174,7 +174,7 @@
 
       <div class="workspace-grid">
         <div class="workspace-main">
-          <div class="panel form-panel"{% if selected_project.generator == 'zulong_settlement' %} style="display:none;"{% endif %}>
+          <div class="panel form-panel"{% if selected_project.generator == 'zulong_settlement' or selected_project.generator == 'md_settlement' %} style="display:none;"{% endif %}>
             {% if selected_project.generator in ['tk_fill', 'fill_4399'] %}
             <div class="panel-heading">
               <div>
@@ -264,7 +264,6 @@
             </select>
           </label>
           <input type="hidden" id="currentProject" value="{{ selected_project.key }}">
-
           {% if selected_project.generator == 'diezhi' %}
           <div id="diezhiBatchInfo" class="batch-info">
             <div class="batch-info-header">
@@ -1981,21 +1980,20 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
       document.getElementById('settlementWorkbenchPanel').style.display = 'none';
       var wbftp = document.getElementById('wbFileTreePanel');
       if (wbftp) wbftp.style.display = 'none';
-      document.getElementById('quoteModeTab').style.display = '';
-      document.getElementById('settleModeTab').style.display = '';
       // clear sidebar workspace-link active
       document.querySelectorAll('.workspace-link').forEach(function(el) { el.classList.remove('active'); });
       if (mode === 'settle') {
-        formPanel.style.display = 'none';
+        if (formPanel) formPanel.style.display = 'none';
         settlePanel.style.display = '';
-        quoteModeTab.classList.remove('active');
+        if (quoteModeTab) quoteModeTab.classList.remove('active');
         settleModeTab.classList.add('active');
         topbarActions.style.display = 'none';
         settleTopbarActions.style.display = 'flex';
         if (quoteHistoryPanel) quoteHistoryPanel.style.display = 'none';
         if (settleHistoryPanel) settleHistoryPanel.style.display = '';
+        var prjSel = document.getElementById('projectSelect');
         document.getElementById('settleProjectName').textContent =
-          '项目：' + document.getElementById('projectSelect').selectedOptions[0].textContent;
+          '项目：' + (prjSel ? prjSel.selectedOptions[0].textContent : '{{ selected_project.display_name }}');
 
         const settleConfig = getSettleConfig();
         const settleContent = document.getElementById('settleContent');
@@ -2077,9 +2075,9 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           settleUnsupported.style.display = 'block';
         }
       } else {
-        formPanel.style.display = '';
+        if (formPanel) formPanel.style.display = '';
         settlePanel.style.display = 'none';
-        quoteModeTab.classList.add('active');
+        if (quoteModeTab) quoteModeTab.classList.add('active');
         settleModeTab.classList.remove('active');
         topbarActions.style.display = 'flex';
         settleTopbarActions.style.display = 'none';
@@ -2105,6 +2103,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
         'niki_xinzuo': { preview: '/api/settlement_diezhi/preview', generate: '/api/settlement_diezhi/generate', diezhi: true },
         'tk': { preview: null, generate: '/api/settlement/tk/generate', bill: 'tk' },
         '4399': { preview: '/api/settlement_4399/preview', generate: '/api/settlement_4399/generate', bill: '4399' },
+        'md': { preview: '/api/settlement_md/preview', generate: '/api/settlement_md/generate' },
     };
 
     function getSettleConfig() {
@@ -2428,6 +2427,35 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
               + '<td class="r">' + (amount * 1.06).toFixed(2) + '</td>';
             tbody.appendChild(tr);
           });
+        } else if (projKey === 'md') {
+          // MD结算预览（单价已是含税价）
+          const total = result.data.reduce(function(s, r) { return s + (parseFloat(r.word_count) || 0); }, 0);
+          const totalAmount = total * 0.424;
+          document.getElementById('settleCount').textContent = result.data.length;
+          document.getElementById('settleTotal').textContent = totalAmount.toFixed(2) + '（含税）';
+          document.querySelector('#settleTableWrap thead tr').innerHTML =
+            '<th style="width:30px;">#</th>'
+            + '<th>需求名</th>'
+            + '<th style="width:90px;">交付日期</th>'
+            + '<th style="width:80px;" class="r">字数</th>'
+            + '<th style="width:65px;" class="r">含税单价</th>'
+            + '<th style="width:90px;" class="r">含税金额</th>';
+
+          const tbody = document.getElementById('settlePreviewBody');
+          tbody.innerHTML = '';
+          result.data.forEach(function(r, i) {
+            const dd = new Date((r.deliv_date - 25569) * 86400000);
+            const ddStr = dd.getFullYear() + '-' + String(dd.getMonth()+1).padStart(2,'0') + '-' + String(dd.getDate()).padStart(2,'0');
+            const amount = (parseFloat(r.word_count) || 0) * 0.424;
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (i+1) + '</td>'
+              + '<td title="' + escHtml(r.req_name) + '">' + escHtml(r.req_name) + '</td>'
+              + '<td>' + ddStr + '</td>'
+              + '<td class="r">' + (r.word_count != null ? parseFloat(r.word_count).toLocaleString() : '') + '</td>'
+              + '<td class="r">0.424</td>'
+              + '<td class="r">' + amount.toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+          });
         } else if (settleConfig.diezhi) {
           // 叠纸3项目统一预览
           document.getElementById('settleCount').textContent = '';
@@ -2613,6 +2641,29 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           if (result.invoice) {
             showInvoiceRequest(result.invoice);
           }
+          loadSettleHistory(year, months[months.length - 1], projKey);
+          lucide.createIcons();
+        } else if (projKey === 'md') {
+          // MD生成结算单（确认版Excel + 盖章版PDF + 請求書PDF）
+          showToast('已生成 ' + result.count + ' 条记录的MD结算单');
+          var resultsHtml = '';
+          if (result.confirm) {
+            var cPath = escHtml(result.confirm.path).replace(/\\/g, '\\\\');
+            resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + cPath + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217746;"></i>' + escHtml(result.confirm.name) + '（确认版）</span>';
+          }
+          if (result.stamp_pdf) {
+            var pPath = escHtml(result.stamp_pdf.path).replace(/\\/g, '\\\\');
+            resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + pPath + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#c0392b;"></i>' + escHtml(result.stamp_pdf.name) + '（盖章版PDF）</span>';
+          }
+          if (result.invoice_pdf) {
+            var ipPath = escHtml(result.invoice_pdf.path).replace(/\\/g, '\\\\');
+            resultsHtml += '<span class="settle-result-card" onclick="openSettleFile(\'' + ipPath + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#d35400;"></i>' + escHtml(result.invoice_pdf.name) + '（請求書PDF）</span>';
+          }
+          document.getElementById('settleResults').innerHTML = resultsHtml
+            + document.getElementById('settleResults').innerHTML;
           loadSettleHistory(year, months[months.length - 1], projKey);
           lucide.createIcons();
         } else {
@@ -3152,12 +3203,12 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       var quoteHistoryPanel = document.getElementById('quoteHistoryPanel');
       var settleHistoryPanel = document.getElementById('settleHistoryPanel');
 
-      formPanel.style.display = 'none';
+      if (formPanel) formPanel.style.display = 'none';
       settlePanel.style.display = 'none';
       quoteAllPanel.style.display = 'none';
       wbPanel.style.display = 'none';
       if (zlPanel) zlPanel.style.display = 'none';
-      quoteModeTab.classList.remove('active');
+      if (quoteModeTab) quoteModeTab.classList.remove('active');
       settleModeTab.classList.remove('active');
       topbarActions.style.display = 'none';
       settleTopbarActions.style.display = 'none';
@@ -3170,13 +3221,13 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       document.querySelectorAll('.project-link:not(.workspace-link)').forEach(function(el) { el.classList.remove('active'); });
 
       if (page === 'quote-all') {
-        quoteModeTab.style.display = 'none';
+        if (quoteModeTab) quoteModeTab.style.display = 'none';
         settleModeTab.style.display = 'none';
         quoteAllPanel.style.display = '';
         document.querySelector('.workspace-link[onclick*="quote-all"]').classList.add('active');
         initQuoteAllGrid();
       } else if (page === 'settlement-workbench') {
-        quoteModeTab.style.display = 'none';
+        if (quoteModeTab) quoteModeTab.style.display = 'none';
         settleModeTab.style.display = 'none';
         wbPanel.style.display = '';
         document.querySelector('.workspace-link[onclick*="settlement-workbench"]').classList.add('active');
@@ -3189,7 +3240,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
         initWbMonthPicker();
         initWbProjectList();
       } else if (page === 'zulong-settlement') {
-        quoteModeTab.style.display = 'none';
+        if (quoteModeTab) quoteModeTab.style.display = 'none';
         settleModeTab.style.display = 'none';
         if (zlPanel) zlPanel.style.display = '';
         var wsSidebar = document.querySelector('.workspace-sidebar');
@@ -3333,6 +3384,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'niki_xinzuo',name:'ニキ新作',company:'叠纸',type:'diezhi'},
       {key:'tk',name:'TK项目',company:'Bilibili',type:'tk'},
       {key:'4399',name:'4399',company:'4399',type:'s94399'},
+      {key:'md',name:'MD',company:'电心',type:'md'},
     ];
 
     function initWbMonthPicker() {
@@ -3635,6 +3687,24 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
               } else {
                 html += '<div class="text-warning" style="font-size:11px;margin-left:12px;margin-top:2px;">⚠ 飞书标记异常: ' + escHtml(v.feishu_mark) + '</div>';
               }
+            }
+          } else if (r.status === 'success') {
+            okCount++;
+            html += '<div class="status-success">' + key + ' - 成功（共' + (r.count || 0) + '条记录，¥' + (r.total_amount || 0).toFixed(2) + '）</div>';
+            // MD：确认版Excel
+            if (r.confirm) {
+              html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(r.confirm.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;margin-left:12px;">'
+                + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217746;"></i> ' + escHtml(r.confirm.name) + '</span>';
+            }
+            // MD：盖章版PDF
+            if (r.stamp_pdf) {
+              html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(r.stamp_pdf.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;margin-left:12px;">'
+                + '<i data-lucide="file-text" style="width:16px;height:16px;color:#c0392b;"></i> ' + escHtml(r.stamp_pdf.name) + '</span>';
+            }
+            // MD：請求書PDF
+            if (r.invoice_pdf) {
+              html += '<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(r.invoice_pdf.path.replace(/\\/g,'\\\\')) + '\')" style="cursor:pointer;margin-left:12px;">'
+                + '<i data-lucide="file-text" style="width:16px;height:16px;color:#d35400;"></i> ' + escHtml(r.invoice_pdf.name) + '</span>';
             }
           } else if (r.status === 'exists') {
             existsCount++;
@@ -3943,6 +4013,11 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       }
       if ({{ selected_project.key | tojson }} === 'zulong' && !workspaceHash) {
         switchPage('zulong-settlement');
+      }
+      if ({{ selected_project.key | tojson }} === 'md' && !workspaceHash) {
+        // MD：自动切换到结算模式
+        switchMode('settle');
+        loadSettlePreview();
       }
     });
 
