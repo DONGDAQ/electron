@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "save_path_config.json"
+CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "outputs" / "config" / "save_path_config.json"
 
 _config_cache: dict | None = None
 _config_cache_mtime: float = 0

@@ -87,6 +87,7 @@ const outputDirs = [
   'outputs/logs/auto_quote',
   'outputs/settlement_tracker',
   'outputs/uploads',
+  'outputs/config',
 ];
 for (const d of outputDirs) {
   ensureDir(path.join(distApp, d));
