@@ -243,12 +243,17 @@ def _match_file_service(batch_file_name: str, service_info: list[dict]) -> dict:
     base = clean.rsplit(".", 1)[0] if "." in clean else clean
     base = base.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
 
+    best = None
+    best_len = 0
     for info in service_info:
         sched_name = info["name"]
-        # 双向包含匹配（至少4个字符避免误匹配）
         if (len(sched_name) > 3 and sched_name in base) or \
            (len(base) > 3 and base in sched_name):
-            return info
+            if len(sched_name) > best_len:
+                best = info
+                best_len = len(sched_name)
+    if best:
+        return best
     return {"e": "TEP", "f": ""}
 
 
