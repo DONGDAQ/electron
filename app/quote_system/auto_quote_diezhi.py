@@ -243,6 +243,12 @@ def _match_file_service(batch_file_name: str, service_info: list[dict]) -> dict:
     base = clean.rsplit(".", 1)[0] if "." in clean else clean
     base = base.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
 
+    # 第一轮：精确匹配
+    for info in service_info:
+        if info["name"] == base:
+            return info
+
+    # 第二轮：模糊匹配（取最长匹配，用于文件名后缀/前缀不同的情况）
     best = None
     best_len = 0
     for info in service_info:
