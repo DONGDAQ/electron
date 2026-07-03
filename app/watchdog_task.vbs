@@ -2,7 +2,7 @@ Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 TASK_NAME = "翻译报价每日自动报价"
-PYTHON = "C:\Users\admin\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+PYTHON = "C:\Users\admin\AppData\Local\Programs\Python\Python312\python.exe"
 SCRIPT = "D:\baojia\electron\app\auto_quote_scheduled.py"
 WORK_DIR = "D:\baojia\electron\app"
 PS1_PATH = "D:\baojia\electron\app\watchdog_task.ps1"

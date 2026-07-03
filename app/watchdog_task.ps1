@@ -4,7 +4,7 @@
 
 param(
     [string]$TaskName = "翻译报价每日自动报价",
-    [string]$Python   = "C:\Users\admin\.workbuddy\binaries\python\versions\3.13.12\python.exe",
+    [string]$Python   = "C:\Users\admin\AppData\Local\Programs\Python\Python312\python.exe",
     [string]$Script   = "D:\baojia\electron\app\auto_quote_scheduled.py",
     [string]$WorkDir = "D:\baojia\electron\app"
 )
