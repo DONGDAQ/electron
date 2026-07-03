@@ -74,10 +74,10 @@ def main(argv: list[str] | None = None) -> int:
         run(args)
         return 0
     except KeyboardInterrupt:
-        print("\nStopped.")
+        print("\n已停止。")
         return 130
     except Exception as exc:
-        print(f"Error: {exc}")
+        print(f"错误: {exc}")
         return 1
 
 
@@ -97,21 +97,21 @@ def run(args: argparse.Namespace) -> None:
         for f in download_dir.iterdir():
             if f.is_file():
                 f.unlink()
-        print("Cleaned old HTML files.")
+        print("已清理旧的HTML文件。")
     download_dir.mkdir(parents=True, exist_ok=True)
 
     all_rows = read_sheet_with_attachments(download_dir)
-    print(f"Read sheet: {len(all_rows)} rows")
+    print(f"读取飞书表: {len(all_rows)} 行")
 
     candidates = find_candidates(all_rows, args.tail, args.blank_stop)
     if not candidates:
-        print("No rows to process.")
+        print("没有待处理的数据。")
         return
 
-    print(f"Found {len(candidates)} rows to process:")
+    print(f"找到 {len(candidates)} 行待处理:")
     for c in candidates:
         label = c["n_attach"]["name"] if c["n_attach"] else c["n_text"]
-        print(f"  Row {c['row']}: {label}")
+        print(f"  第 {c['row']} 行: {label}")
 
     processed = 0
     skipped = 0
@@ -120,17 +120,17 @@ def run(args: argparse.Namespace) -> None:
 
     for idx, candidate in enumerate(candidates):
         row_num = candidate["row"]
-        print(f"\n[{idx+1}/{len(candidates)}] Processing row {row_num}...")
+        print(f"\n[{idx+1}/{len(candidates)}] 处理第 {row_num} 行...")
 
         try:
             # 纯文本 + "同上" → 复用上一行
             if not candidate["n_attach"] and is_same_as_above(candidate["n_text"]):
                 if last_values is None:
-                    print("  N='same as above' but no previous data, skipping.")
+                    print("  N列标记'同上'但没有上一行数据，跳过。")
                     skipped += 1
                     continue
                 values = last_values
-                print(f"  N='same as above', reusing: {values}")
+                print(f"  N列标记'同上'，复用上一行: {values}")
 
             # 有附件 → 下载 + 解析
             elif candidate["n_attach"]:
@@ -144,29 +144,29 @@ def run(args: argparse.Namespace) -> None:
                 values = stats_to_output_values(stats)
                 last_values = values
                 html_path.unlink(missing_ok=True)
-                print(f"  Parsed: O={values[0]}, P={values[1]}, Q={values[2]}...")
+                print(f"  解析完成: O={values[0]}, P={values[1]}, Q={values[2]}...")
 
             # 纯文本非"同上" → 跳过
             else:
                 # 忽略"提前翻译"等特殊标记
                 if "提前翻译" in candidate['n_text'] or "无需统计" in candidate['n_text']:
                     continue
-                print(f"  N column non-attachment, non-same-as-above: {candidate['n_text'][:50]}, skipping.")
+                print(f"  N列非附件非同上: {candidate['n_text'][:50]}，跳过。")
                 skipped += 1
                 continue
 
             if args.dry_run:
-                print(f"  [dry-run] Skip write: {values}")
+                print(f"  [预览模式] 跳过写入: {values}")
             else:
                 write_o_y(row_num, values)
-                print(f"  Written O-Y: {values}")
+                print(f"  已写入 O-Y: {values}")
 
             processed += 1
             time.sleep(0.3)
 
         except Exception as exc:
             failed += 1
-            print(f"  Failed: {exc}")
+            print(f"  失败: {exc}")
 
     print(f"\n完成: {processed} 条已填写, {skipped} 条跳过, {failed} 条失败.")
 
@@ -199,7 +199,7 @@ def read_sheet_with_attachments(download_dir: Path) -> list[dict]:
     for start_row in range(1, row_count + 1, chunk_size):
         end_row = min(start_row + chunk_size - 1, row_count)
         range_str = f"N{start_row}:O{end_row}"
-        print(f"  Reading {range_str}...")
+        print(f"  读取范围: {range_str}...")
 
         result = _cli(
             "sheets", "+cells-get",
@@ -323,16 +323,16 @@ def download_html(file_token: str, file_name: str, download_dir: Path, row_num: 
         data = json.loads(result.stdout)
         saved = Path(data.get("saved_path", ""))
         if not saved.exists() and "saved_path" not in data:
-            print(f"  Download failed: {data}")
+            print(f"  下载失败: {data}")
             return None
 
         saved = Path(data["saved_path"])
         if saved != save_path:
             saved.rename(save_path)
-        print(f"  Downloaded: {save_path.name}")
+        print(f"  已下载: {save_path.name}")
         return save_path
     except Exception as exc:
-        print(f"  Download failed: {exc}")
+        print(f"  下载失败: {exc}")
         return None
 
 
