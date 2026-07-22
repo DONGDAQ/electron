@@ -61,7 +61,7 @@ PROJECTS: dict[str, ProjectConfig] = {
         history_dir="Bilibili/bang2",
         default_languages=("日翻中", "日翻韩", "日翻英"),
         prices={
-            "日翻中": 0.30,
+            "日翻中": 0.27,
             "日翻韩": 0.61,
             "日翻英": 0.65,
             "日翻繁": 0.45,
@@ -85,7 +85,7 @@ PROJECTS: dict[str, ProjectConfig] = {
         history_dir="Bilibili/bang2社区",
         default_languages=("日翻中", "日翻韩", "日翻英"),
         prices={
-            "日翻中": 0.30,
+            "日翻中": 0.27,
             "日翻韩": 0.61,
             "日翻英": 0.65,
             "日翻繁": 0.45,
