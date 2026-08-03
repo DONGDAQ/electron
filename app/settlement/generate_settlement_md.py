@@ -206,7 +206,7 @@ def generate_invoice(records, year, month, output_dir):
     """
     month_str = f"{year:04d}{month:02d}"
     template_file = f"請求書_{month_str}月【GamerHouse】.xlsx"
-    output_file = f"請求書_{month_str}月【GamerHouse】.xlsx"
+    output_file = f"請求書_MD-KR_{month_str}月【GamerHouse】.xlsx"
 
     template = TEMPLATE_DIR / template_file
     output_path = output_dir / output_file
@@ -216,7 +216,7 @@ def generate_invoice(records, year, month, output_dir):
             os.remove(str(output_path))
         except PermissionError:
             ts = datetime.now().strftime('%H%M%S')
-            output_file = f"請求書_{month_str}月【GamerHouse】_{ts}.xlsx"
+            output_file = f"請求書_MD-KR_{month_str}月【GamerHouse】_{ts}.xlsx"
             output_path = output_dir / output_file
 
     shutil.copy2(str(template), str(output_path))
