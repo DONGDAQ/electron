@@ -136,10 +136,24 @@ def _fill_template(records, year, month, template_filename, output_filename, out
 
         # ---- 填充数据（第10行开始）----
         data_start_row = 10
+        MAX_DATA_END_ROW = 29  # 模板数据行位（最多20行）
+
+        # ---- 超行自动插行：在合计行前插入额外行，复制数据行样式，修正合计公式 ----
+        if len(records) > 20:
+            extra = len(records) - 20
+            # 复制第10行整行（含边框/字体/格式）
+            ws.Rows(f"{data_start_row}:{data_start_row}").Copy()
+            insert_from = MAX_DATA_END_ROW + 1  # 30
+            ws.Rows(f"{insert_from}:{insert_from + extra - 1}").Insert(Shift=-4121)  # xlDown
+            ws.Rows(f"{insert_from}:{insert_from + extra - 1}").Font.Size = ws.Cells(data_start_row, 3).Font.Size
+            # 修正合计公式（合计行现在位于 30+extra）
+            new_total_row = MAX_DATA_END_ROW + 1 + extra
+            last_data_row = data_start_row + len(records) - 1
+            ws.Cells(new_total_row, 4).Formula = f"=SUM(D{data_start_row}:D{last_data_row})"
+            ws.Cells(new_total_row, 6).Formula = f"=SUM(F{data_start_row}:F{last_data_row})"
+
         for i, rec in enumerate(records):
             r = data_start_row + i
-            if r > 29:
-                break
             # C列: 翻译内容（文件名）
             ws.Cells(r, 3).Value = rec['req_name']
             # D列: 字数
@@ -155,9 +169,10 @@ def _fill_template(records, year, month, template_filename, output_filename, out
             ws.Cells(r, 7).Value = deliv_dt
             ws.Cells(r, 7).NumberFormat = 'yyyy/m/d'
 
-        # ---- 隐藏无数据的行（第10+N 至 29行）----
+        # ---- 隐藏无数据的行 ----
         last_data_row = data_start_row + len(records) - 1
-        for row in range(last_data_row + 1, 30):
+        hide_until = MAX_DATA_END_ROW + 1 + max(0, len(records) - 20)  # 合计行前一行
+        for row in range(last_data_row + 1, hide_until):
             ws.Rows(row).Hidden = True
 
         wb.Save()

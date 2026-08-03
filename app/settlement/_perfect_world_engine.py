@@ -228,6 +228,19 @@ def generate_settlement_excel(records, year, month, output_dir, profile: Settlem
                     cell.alignment = copy(fmt.get('alignment'))
                     cell.number_format = fmt.get('number_format', '')
             insert_pos += 1
+        total_row += extra  # 合计行随插行下移
+        # 修正合计公式，覆盖到新的数据末行（openpyxl 插行不会自动扩展 SUM 范围）
+        # 保留原公式的列引用（如 =SUM(J11:J74) → =SUM(J11:J80)），只更新行范围
+        import re as _re
+        last_data_row = data_start_row + num_records - 1
+        for col in range(1, 16):
+            v = ws.cell(row=total_row, column=col).value
+            if isinstance(v, str) and v.startswith('=SUM('):
+                m = _re.search(r'=SUM\(([A-Z]+)\d+', v)
+                col_letter = m.group(1) if m else ws.cell(row=data_start_row, column=col).column_letter
+                ws.cell(row=total_row, column=col,
+                        value=f"=SUM({col_letter}{data_start_row}:{col_letter}{last_data_row})")
+                break
 
     prices = profile.unit_prices
     default_price = profile.default_price

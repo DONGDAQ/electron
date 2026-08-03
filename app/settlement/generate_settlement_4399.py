@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import openpyxl
+from copy import copy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from quote_system.feishu_client import FeishuClient
@@ -243,13 +244,61 @@ def generate_settlement_excel(records: list[dict], project_name: str, year: int,
     ws["D46"] = exchange_rate
     ws["H3"] = today
 
-    max_data_rows = DATA_END_ROW - DATA_START_ROW + 1
+    # ---- 动态定位合计行（模板中搜索"费用合计"所在行）----
+    total_row = None
+    for r in range(1, ws.max_row + 1):
+        c_val = ws.cell(row=r, column=3).value
+        if c_val and "费用合计" in str(c_val):
+            total_row = r
+            break
+    if total_row is None:
+        total_row = DATA_END_ROW + 2  # 兜底：模板默认合计在 42
+
+    max_data_rows = total_row - DATA_START_ROW
+    rate_row = 46  # 模板中汇率的固定行（D46），插行后需同步下移
     if len(records) > max_data_rows:
         extra = len(records) - max_data_rows
+        # 以第16行为模板行，复制其公式（G=E*F、H=G/汇率）和样式到新插入的行
+        ref_cells = {}
+        for col in range(1, 13):
+            cell = ws.cell(row=DATA_START_ROW, column=col)
+            ref_cells[col] = {
+                "value": cell.value,
+                "font": copy(cell.font),
+                "border": copy(cell.border),
+                "alignment": copy(cell.alignment),
+                "number_format": cell.number_format,
+            }
         for _ in range(extra):
-            ws.insert_rows(DATA_END_ROW + 1)
-        for r in range(DATA_START_ROW + len(records), DATA_START_ROW + len(records) + extra + 50):
-            pass
+            ws.insert_rows(total_row)
+            total_row += 1
+        rate_row += extra  # 插行后汇率行同步下移
+        # 新插入的行：写入公式（G=金额=E*F，H=USD=G/汇率），其余样式复制
+        for i in range(len(records)):
+            r = DATA_START_ROW + i
+            if r >= total_row:
+                break
+            for col in range(1, 13):
+                fmt = ref_cells.get(col)
+                if not fmt:
+                    continue
+                cell = ws.cell(row=r, column=col)
+                cell.font = copy(fmt["font"])
+                cell.border = copy(fmt["border"])
+                cell.alignment = copy(fmt["alignment"])
+                cell.number_format = fmt.get("number_format", "")
+            ws.cell(row=r, column=7, value=f"=E{r}*F{r}")               # G 列：人民币金额
+            ws.cell(row=r, column=8, value=f"=G{r}/$D${rate_row}")      # H 列：USD 金额
+        # 修正合计公式覆盖到新的数据末行
+        last_data_row = DATA_START_ROW + len(records) - 1
+        ws.cell(row=total_row, column=8, value=f"=SUM(H{DATA_START_ROW}:H{last_data_row})")
+        # 汇率写到下移后的位置（插行前已写入的 D46 已被推走，这里重新写入）
+        ws.cell(row=rate_row, column=4, value=exchange_rate)
+    else:
+        # 隐藏多余的空数据行
+        last_data_row = DATA_START_ROW + len(records) - 1
+        for r in range(last_data_row + 1, total_row):
+            ws.row_dimensions[r].hidden = True
 
     for i, rec in enumerate(records):
         r = DATA_START_ROW + i
@@ -260,10 +309,6 @@ def generate_settlement_excel(records: list[dict], project_name: str, year: int,
             ws.cell(row=r, column=4).number_format = "m/d"
         ws.cell(row=r, column=5, value=rec["word_count"])
         ws.cell(row=r, column=6, value=rec.get("unit_price", UNIT_PRICE))
-
-    last_data_row = DATA_START_ROW + len(records) - 1
-    for r in range(last_data_row + 1, DATA_END_ROW + 1):
-        ws.row_dimensions[r].hidden = True
 
     wb.save(str(output_path))
     return output_path
@@ -310,30 +355,40 @@ def generate_invoice_excel(settlement_xlsx_path: Path, project_name: str, year: 
     return output_path
 
 
+def _find_total_row(ws) -> int:
+    """动态定位结算单合计行（C列含"费用合计"），找不到返回默认 42。"""
+    for r in range(1, ws.max_row + 1):
+        c_val = ws.cell(row=r, column=3).value
+        if c_val and "费用合计" in str(c_val):
+            return r
+    return 42
+
+
 def _read_settlement_h42(xlsx_path: Path) -> float:
-    try:
+    """读取结算单合计金额。动态定位合计行（不再固定 H42，兼容插行场景）。"""
+    def _try_read():
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-        ws = wb.active
-        val = ws["H42"].value
-        wb.close()
-        if isinstance(val, (int, float)) and val > 0:
-            return round(float(val), 2)
-    except Exception:
-        pass
+        try:
+            ws = wb.active
+            total_row = _find_total_row(ws)
+            val = ws.cell(row=total_row, column=8).value  # H列合计
+            if isinstance(val, (int, float)) and val > 0:
+                return round(float(val), 2)
+            return None
+        finally:
+            wb.close()
+
+    val = _try_read()
+    if val is not None:
+        return val
 
     _recalc_excel(xlsx_path)
 
-    try:
-        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-        ws = wb.active
-        val = ws["H42"].value
-        wb.close()
-        if isinstance(val, (int, float)):
-            return round(float(val), 2)
-    except Exception:
-        pass
+    val = _try_read()
+    if val is not None:
+        return val
 
-    raise ValueError(f"无法从结算单读取 H42 合计金额: {xlsx_path}")
+    raise ValueError(f"无法从结算单读取合计金额: {xlsx_path}")
 
 
 def _recalc_excel(file_path: Path):

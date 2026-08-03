@@ -2295,10 +2295,10 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
             loadSettleHistory(year, months[0], projKey);
             return;
           }
-          let totalCount = 0, totalWords = 0;
-          projNames.forEach(function(n) { totalCount += result.data[n].count; totalWords += result.data[n].total_words; });
+          let totalCount = 0, totalWords = 0, totalAmount = 0;
+          projNames.forEach(function(n) { totalCount += result.data[n].count; totalWords += result.data[n].total_words; totalAmount += result.data[n].total_cny; });
           document.getElementById('settleCount').textContent = totalCount;
-          document.getElementById('settleTotal').textContent = (totalWords * 0.52).toFixed(2);
+          document.getElementById('settleTotal').textContent = totalAmount.toFixed(2);
           document.getElementById('settleStats').style.display = 'flex';
           document.getElementById('settleTableWrap').style.display = '';
           document.querySelector('#settleTableWrap thead tr').innerHTML =
@@ -2310,7 +2310,8 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
             p.records.forEach(function(r, i) {
               const tr = document.createElement('tr');
               if (i === 0) tr.style.borderTop = '2px solid var(--primary)';
-              tr.innerHTML = '<td>' + (i+1) + '</td><td>' + escHtml(pn) + '</td><td>' + escHtml(p.code) + '</td><td>' + escHtml(r.req_name) + '</td><td>' + escHtml(r.deliv_date) + '</td><td class="r">' + (r.word_count||0).toLocaleString() + '</td><td class="r">' + ((r.word_count||0)*0.52).toFixed(2) + '</td>';
+              const rPrice = (r.unit_price != null ? r.unit_price : 0.52);
+              tr.innerHTML = '<td>' + (i+1) + '</td><td>' + escHtml(pn) + '</td><td>' + escHtml(p.code) + '</td><td>' + escHtml(r.req_name) + '</td><td>' + escHtml(r.deliv_date) + '</td><td class="r">' + (r.word_count||0).toLocaleString() + '</td><td class="r">' + ((r.word_count||0)*rPrice).toFixed(2) + '</td>';
               tbody.appendChild(tr);
             });
           });

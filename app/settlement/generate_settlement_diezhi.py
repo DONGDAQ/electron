@@ -9,8 +9,8 @@ import openpyxl
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys._MEIPASS)
 else:
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(BASE_DIR / "app") if not getattr(sys, 'frozen', False) else str(BASE_DIR))
+    BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR) if not getattr(sys, 'frozen', False) else str(BASE_DIR))
 from quote_system.paths import get_quote_history_dir, get_settlement_dir
 from settlement._com_utils import com_excel
 
@@ -85,6 +85,65 @@ def _ensure_formulas_cached(filepath):
             wb.Close()
     except Exception as e:
         print(f'[WARN] Excel重算失败: {e}')
+
+
+def _insert_rows_for_overflow(ws, data_start_row, num_rows, max_data_rows):
+    """数据超行时在合计行前插入空行（复制数据行样式），返回新的合计行位置。
+
+    叠纸模板：数据行 10~10+max-1，合计行 = 10+max（C列含"合计"）。
+    插入后合计行下移 num_rows-max 行，SUM 公式范围需同步更新。
+    """
+    from copy import copy as _copy
+    if num_rows <= max_data_rows:
+        return data_start_row + max_data_rows
+
+    extra = num_rows - max_data_rows
+    total_row = data_start_row + max_data_rows  # 模板合计行位置
+
+    # 以第 data_start_row 行为模板行，记录每列格式
+    ref_cells = {}
+    for col in range(1, 15):
+        cell = ws.cell(row=data_start_row, column=col)
+        ref_cells[col] = {
+            'font': _copy(cell.font),
+            'fill': _copy(cell.fill),
+            'border': _copy(cell.border),
+            'alignment': _copy(cell.alignment),
+            'number_format': cell.number_format,
+        }
+
+    for _ in range(extra):
+        ws.insert_rows(total_row)
+        total_row += 1
+
+    # 新插入行：复制样式 + I 列金额公式 =G*H
+    for i in range(num_rows):
+        r = data_start_row + i
+        if r >= total_row:
+            break
+        for col in range(1, 15):
+            fmt = ref_cells.get(col)
+            if not fmt:
+                continue
+            cell = ws.cell(row=r, column=col)
+            cell.font = _copy(fmt['font'])
+            cell.fill = _copy(fmt['fill'])
+            cell.border = _copy(fmt['border'])
+            cell.alignment = _copy(fmt['alignment'])
+            cell.number_format = fmt.get('number_format', '')
+        ws.cell(row=r, column=9, value=f'=G{r}*H{r}')  # I 列金额公式
+
+    # 修正合计公式范围（保留原列引用）
+    import re as _re
+    last_data_row = data_start_row + num_rows - 1
+    for col in range(1, 15):
+        v = ws.cell(row=total_row, column=col).value
+        if isinstance(v, str) and 'SUM(' in v:
+            m = _re.search(r'SUM\(([A-Z]+)\d+', v)
+            col_letter = m.group(1) if m else ws.cell(row=data_start_row, column=col).column_letter
+            ws.cell(row=total_row, column=col,
+                    value=f'=SUM({col_letter}{data_start_row}:{col_letter}{last_data_row})')
+    return total_row
 
 
 def scan_quote_files(history_dir):
@@ -296,12 +355,14 @@ def _generate_x3_excel(quotes_by_type, year, month, output_dir):
     max_data_rows = 14
     row = data_start_row
 
+    # 先统计需要的总行数（X3 按类型分行）
+    need_rows = sum(len(q['type_words']) for q in quotes_by_type)
+    _insert_rows_for_overflow(ws, data_start_row, need_rows, max_data_rows)
+
     for q in quotes_by_type:
         types = q['type_words']
         is_single_tep = len(types) == 1 and "TEP" in types
         for type_name, words in types.items():
-            if row >= data_start_row + max_data_rows:
-                break
             price = X3_PRICES[type_name]
             suffix = "" if is_single_tep else type_name
             ws.cell(row=row, column=3, value=q['file_name'] + suffix)
@@ -310,7 +371,7 @@ def _generate_x3_excel(quotes_by_type, year, month, output_dir):
             ws.cell(row=row, column=8, value=price)
             row += 1
 
-    total_row = data_start_row + max_data_rows
+    total_row = data_start_row + max(max_data_rows, need_rows)
     for r in range(row, total_row):
         ws.row_dimensions[r].hidden = True
 
@@ -344,9 +405,9 @@ def _generate_single_excel(project_key, quotes, year, month, output_dir):
     data_start_row = 10
     max_data_rows = 14
 
+    _insert_rows_for_overflow(ws, data_start_row, len(quotes), max_data_rows)
+
     for i, q in enumerate(quotes):
-        if i >= max_data_rows:
-            break
         r = data_start_row + i
         ws.cell(row=r, column=3, value=q['file_name'])
         ws.cell(row=r, column=6, value=f'{month}月')
@@ -356,8 +417,8 @@ def _generate_single_excel(project_key, quotes, year, month, output_dir):
         else:
             ws.cell(row=r, column=8, value=0)
 
-    total_row = data_start_row + max_data_rows
-    last_data_row = data_start_row + min(len(quotes), max_data_rows) - 1
+    total_row = data_start_row + max(max_data_rows, len(quotes))
+    last_data_row = data_start_row + len(quotes) - 1
     for r in range(last_data_row + 1, total_row):
         ws.row_dimensions[r].hidden = True
 

@@ -377,12 +377,26 @@ def sync_tk_data() -> dict:
     today = _date.today()
     current_month = today.month
 
+    # 获取表实际行数（避免硬编码只读前 248 行）
+    try:
+        info_res = _cli("sheets", "+workbook-info", "--url", ORIGINAL_SHEET_URL)
+        info = _json.loads(info_res.stdout)
+        sheets = info["data"]["sheets"]
+        target = next(s for s in sheets if s["sheet_id"] == SHEET_ID)
+        max_row = target.get("row_count", 248)
+    except Exception:
+        max_row = 248
+    # 从第3行开始读到表末尾，分块 50 行
+    last_start = max(3, max_row - 1)
+
     settled = []
     unsettled = []
 
     # 分批读取
-    for start in range(3, 250, 50):
-        end = min(start + 49, 248)
+    for start in range(3, last_start + 1, 50):
+        end = min(start + 49, max_row)
+        if end < start:
+            break
         result = _cli(
             "sheets", "+cells-get",
             "--url", ORIGINAL_SHEET_URL,

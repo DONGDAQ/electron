@@ -1754,7 +1754,7 @@ def settlement_4399_preview() -> Response:
             continue
         code = _get_project_code(proj_name)
         total_words = sum(r["word_count"] for r in records)
-        total_cny = total_words * 0.52
+        total_cny = sum(r["word_count"] * (r.get("unit_price") or 0.52) for r in records)
         projects_preview[proj_name] = {
             "code": code,
             "count": len(records),
@@ -1764,6 +1764,7 @@ def settlement_4399_preview() -> Response:
                 "req_name": r["req_name"],
                 "deliv_date": (excel_serial_to_date(r["deliv_date"]) or datetime(2000, 1, 1)).strftime("%Y-%m-%d"),
                 "word_count": r["word_count"],
+                "unit_price": r.get("unit_price") or 0.52,
             } for r in records],
         }
 
@@ -2618,13 +2619,15 @@ def _settle_preview_4399(year, month):
     boqi_data = read_feishu_data_boqi(year, month)
     total_count = 0
     total_words = 0
+    total_amount = 0.0
     for records in main_data.values():
         total_count += len(records)
         total_words += sum(r.get("word_count", 0) or 0 for r in records)
+        total_amount += sum(r.get("word_count", 0) * (r.get("unit_price") or 0.52) for r in records)
     if boqi_data:
         total_count += len(boqi_data)
         total_words += sum(r.get("word_count", 0) or 0 for r in boqi_data)
-    total_amount = total_words * 0.52
+        total_amount += sum(r.get("word_count", 0) * (r.get("unit_price") or 0.52) for r in boqi_data)
     return {"count": total_count, "total_words": total_words, "total_amount": round(total_amount, 2)}
 
 

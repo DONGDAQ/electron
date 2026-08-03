@@ -38,9 +38,12 @@ def com_excel():
 
 @contextmanager
 def com_word():
-    """Word COM 上下文管理器。退出时自动 Close/Quit/CoUninitialize。"""
+    """Word COM 上下文管理器。退出时自动 Close/Quit/CoUninitialize。
+
+    使用 DispatchEx 创建独立实例，避免连接/退出用户已打开的 Word。
+    """
     pythoncom.CoInitialize()
-    word = win32com.client.Dispatch("Word.Application")
+    word = win32com.client.DispatchEx("Word.Application")
     word.Visible = False
     word.DisplayAlerts = False
     try:

@@ -61,38 +61,67 @@ class FeishuClient:
         self._token_expire = time.time() + result.get("expire", 7200)
 
     def _api(self, method: str, url: str, body: dict | None = None) -> dict:
-        self._ensure_token()
-        data = json.dumps(body).encode() if body else None
-        req = urllib.request.Request(url, data=data, headers={
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json; charset=utf-8",
-        })
-        req.method = method
-        try:
-            resp = urllib.request.urlopen(req, timeout=30)
-            response_body = resp.read().decode()
-            # 检查响应是否为HTML（错误页面）
-            if response_body.startswith('<!doctype') or response_body.startswith('<!DOCTYPE'):
-                print(f"飞书API返回HTML响应: {response_body[:500]}...")
-                raise RuntimeError(f"飞书API返回错误页面，可能是表格权限或Token错误。响应内容: {response_body[:200]}...")
-            return json.loads(response_body)
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode()
-            if error_body.startswith('<!doctype') or error_body.startswith('<!DOCTYPE'):
-                raise RuntimeError(f"飞书API返回错误页面 (HTTP {e.code})，可能是表格权限或Token错误")
+        """调用飞书 API，带 token 过期重试与限流重试。
+
+        - token 过期（code 99991663 / 99991671）：刷新 token 后重试一次
+        - 限流（code 99991400）：短暂等待后重试（最多 3 次）
+        """
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            self._ensure_token()
+            data = json.dumps(body).encode() if body else None
+            req = urllib.request.Request(url, data=data, headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json; charset=utf-8",
+            })
+            req.method = method
             try:
-                error_json = json.loads(error_body)
-            except json.JSONDecodeError:
-                error_json = {}
-            if error_json.get("code") == 91403:
-                raise RuntimeError(
-                    f"飞书API错误 {e.code}: 没有权限访问该表格。"
-                    "请把飞书应用添加为表格协作者，或确认应用已获得 Sheets/Drive 读写权限。"
-                )
-            raise RuntimeError(f"飞书API错误 {e.code}: {error_body}")
-        except json.JSONDecodeError as e:
-            response_body = resp.read().decode() if 'resp' in locals() else "No response body"
-            raise RuntimeError(f"飞书API返回非JSON响应: {response_body[:200]}...")
+                resp = urllib.request.urlopen(req, timeout=30)
+                response_body = resp.read().decode()
+                # 检查响应是否为HTML（错误页面）
+                if response_body.startswith('<!doctype') or response_body.startswith('<!DOCTYPE'):
+                    print(f"飞书API返回HTML响应: {response_body[:500]}...")
+                    raise RuntimeError(f"飞书API返回错误页面，可能是表格权限或Token错误。响应内容: {response_body[:200]}...")
+                result = json.loads(response_body)
+            except urllib.error.HTTPError as e:
+                error_body = e.read().decode()
+                if error_body.startswith('<!doctype') or error_body.startswith('<!DOCTYPE'):
+                    raise RuntimeError(f"飞书API返回错误页面 (HTTP {e.code})，可能是表格权限或Token错误")
+                try:
+                    error_json = json.loads(error_body)
+                except json.JSONDecodeError:
+                    error_json = {}
+                code = error_json.get("code")
+                # token 过期：刷新后重试一次
+                if code in (99991663, 99991671) and attempt == 0:
+                    print("飞书 token 过期，刷新后重试...")
+                    self._token = None
+                    self._token_expire = 0
+                    continue
+                # 限流：等待后重试
+                if code == 99991400 and attempt < max_attempts - 1:
+                    wait = 1 + attempt * 2
+                    print(f"飞书 API 限流，等待 {wait}s 重试 ({attempt + 1}/{max_attempts})...")
+                    time.sleep(wait)
+                    continue
+                if error_json.get("code") == 91403:
+                    raise RuntimeError(
+                        f"飞书API错误 {e.code}: 没有权限访问该表格。"
+                        "请把飞书应用添加为表格协作者，或确认应用已获得 Sheets/Drive 读写权限。"
+                    )
+                raise RuntimeError(f"飞书API错误 {e.code}: {error_body}")
+            except json.JSONDecodeError as e:
+                response_body = resp.read().decode() if 'resp' in locals() else "No response body"
+                raise RuntimeError(f"飞书API返回非JSON响应: {response_body[:200]}...")
+            else:
+                if result.get("code") == 99991400 and attempt < max_attempts - 1:
+                    wait = 1 + attempt * 2
+                    print(f"飞书 API 限流，等待 {wait}s 重试 ({attempt + 1}/{max_attempts})...")
+                    time.sleep(wait)
+                    continue
+                return result
+        # 理论不可达（for 循环内有 return/raise），防御性兜底
+        raise RuntimeError(f"飞书API调用失败（重试 {max_attempts} 次仍失败）: {url}")
 
     def read_sheet(self, sheet_id: str | None = None, range_str: str | None = None, render: str | None = None) -> list[list[Any]]:
         if sheet_id is None:
@@ -150,8 +179,18 @@ class FeishuClient:
             raise RuntimeError(f"写入范围失败: {result}")
 
     def download_attachment(self, file_token: str, save_path: Path) -> Path:
-        """下载飞书附件到本地"""
+        """下载飞书附件到本地。
+
+        文件名统一消毒（去除路径分隔符等非法字符），防止附件名导致路径穿越。
+        """
         self._ensure_token()
+        # 消毒文件名：只保留安全字符，避免 ../ 或非法字符逃逸目录
+        raw_name = save_path.name or "download.html"
+        safe_name = "".join(ch if ch not in '<>:"/\\|?*' and ord(ch) >= 32 else "_" for ch in raw_name)
+        safe_name = safe_name.replace("..", "_") or "download.html"
+        if safe_name != raw_name:
+            print(f"  附件名已消毒: {raw_name!r} -> {safe_name!r}")
+        save_path = save_path.parent / safe_name
         url = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download"
         req = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {self._token}",
