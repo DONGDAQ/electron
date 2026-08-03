@@ -1361,7 +1361,7 @@ def settlement_generate() -> Response:
     if not records:
         return jsonify({"status": "error", "message": f"{year}年{month}月没有交付记录"}), 404
 
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界" / "幻塔"
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     excel_path = generate_settlement_excel(records, year, month, output_dir)
@@ -1393,7 +1393,7 @@ def settlement_yh_games_generate() -> Response:
     if not records:
         return jsonify({"status": "error", "message": f"{year}年{month}月没有交付记录"}), 404
 
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界" / "异环游戏内"
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     excel_path = generate_yh_games_excel(records, year, month, output_dir)
@@ -1425,7 +1425,7 @@ def settlement_yh_publish_generate() -> Response:
     if not records:
         return jsonify({"status": "error", "message": f"{year}年{month}月没有交付记录"}), 404
 
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界" / "异环发行"
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "完美世界"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     excel_path = generate_yh_publish_excel(records, year, month, output_dir)
@@ -1481,7 +1481,8 @@ def settlement_batch_perfect_world() -> Response:
             if not records:
                 results[name] = {"status": "empty", "message": f"{name}: {year}年{month}月没有交付记录"}
                 continue
-            output_dir = base_dir / subdir
+            # 三个项目文件统一放 base_dir（完美世界/）下，不再分子目录
+            output_dir = base_dir
             output_dir.mkdir(parents=True, exist_ok=True)
             excel_path = excel_fn(records, year, month, output_dir)
             docx_path = docx_fn(records, year, month, output_dir)
@@ -2085,7 +2086,8 @@ def settlement_files() -> Response:
     if project_key in bill_project_dirs:
         search_dir = settlement_dir / f"{year}年{month_display}月" / "Bilibili" / bill_project_dirs[project_key]
     elif project_key in perfect_world_dirs:
-        search_dir = settlement_dir / f"{year}年{month_display}月" / "完美世界" / perfect_world_dirs[project_key]
+        # 完美世界三个项目文件统一放 完美世界/ 下，按文件名前缀过滤
+        search_dir = settlement_dir / f"{year}年{month_display}月" / "完美世界"
     elif project_key in kuluo_dirs:
         search_dir = settlement_dir / f"{year}年{month_display}月" / "库洛游戏" / kuluo_dirs[project_key]
     elif project_key in diezhi_dirs:
@@ -2102,8 +2104,18 @@ def settlement_files() -> Response:
         search_dir = settlement_dir
 
     if search_dir.exists():
+        # 完美世界文件统一在一个目录，按项目文件名前缀过滤
+        pw_prefix = None
+        if project_key in perfect_world_dirs:
+            pw_prefix = _PW_FILE_PREFIX.get({
+                "huanta": "generate_settlement",
+                "yihuan_nei": "generate_settlement_yh_games",
+                "yihuan_faxing": "generate_settlement_yh_publish",
+            }.get(project_key), "【")
         for f in sorted(search_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not f.is_file():
+                continue
+            if pw_prefix is not None and not f.name.startswith(pw_prefix):
                 continue
             if project_key not in bill_project_dirs and project_key not in perfect_world_dirs and project_key not in kuluo_dirs and project_key not in ("tk", "md") and year and month:
                 ym = f"{year}年{month_display}月" if month else str(year)
@@ -2464,6 +2476,13 @@ _PW_SHEET_IDS = {
     'generate_settlement_yh_publish': 'S5yHmP',
 }
 
+# 完美世界三个项目结算文件名前缀（文件都直接放在 完美世界/ 下，用前缀区分重复检查与文件列表）
+_PW_FILE_PREFIX = {
+    'generate_settlement': '【幻塔结算单】',
+    'generate_settlement_yh_games': '【异环结算单】-NTE【游戏内】',
+    'generate_settlement_yh_publish': '【异环结算单】-NTE【发行】',
+}
+
 
 def _settle_generate_pw(module_name, year, month, subdir, company):
     import importlib
@@ -2471,9 +2490,11 @@ def _settle_generate_pw(module_name, year, month, subdir, company):
     records = mod.read_feishu_data(year, month)
     if not records:
         return {"status": "empty", "message": "没有交付记录"}
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / company / subdir
+    # 完美世界三个项目文件统一放 company 目录下（不再分子目录）
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / company
     output_dir.mkdir(parents=True, exist_ok=True)
-    if _check_settlement_exists(output_dir, "【"):
+    prefix = _PW_FILE_PREFIX.get(module_name, "【")
+    if _check_settlement_exists(output_dir, prefix):
         return {"status": "exists", "message": f"{subdir}当月已有结算文件，请检查是否重复结算"}
     excel_path = mod.generate_settlement_excel(records, year, month, output_dir)
     docx_path = mod.generate_acceptance_docx(records, year, month, output_dir)

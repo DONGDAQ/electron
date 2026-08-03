@@ -48,7 +48,7 @@ PERFECT_WORLD_PROFILES: dict[str, SettlementProfile] = {
         docx_template='【幻塔】验收单-TOF【游戏内】年月模板.docx',
         docx_filename='【幻塔】验收单-TOF【游戏内】{year}年{month}月.docx',
         docx_conflict_prefix='【幻塔】验收单-TOF【游戏内】',
-        output_subdir='完美世界/幻塔',
+        output_subdir='完美世界',
         project_code='TOF',
         number_suffix='01',
         description='幻塔月度结算单生成',
@@ -62,7 +62,7 @@ PERFECT_WORLD_PROFILES: dict[str, SettlementProfile] = {
         docx_template='【异环】验收单-NTE【游戏内】年月模板.docx',
         docx_filename='【异环】验收单-NTE【游戏内】{year}年{month}月.docx',
         docx_conflict_prefix='【异环游戏内】验收单-TOF【游戏内】',
-        output_subdir='完美世界/异环游戏内',
+        output_subdir='完美世界',
         project_code='NTE',
         number_suffix='02',
         description='异环游戏内月度结算单生成',
@@ -76,7 +76,7 @@ PERFECT_WORLD_PROFILES: dict[str, SettlementProfile] = {
         docx_template='【异环】验收单-NTE【发行】模板.docx',
         docx_filename='【异环】验收单-NTE【发行】{year}年{month}月.docx',
         docx_conflict_prefix='【异环发行】验收单-TOF【发行】',
-        output_subdir='完美世界/异环发行',
+        output_subdir='完美世界',
         project_code='NTE',
         number_suffix='03',
         has_task_no=False,
@@ -87,7 +87,7 @@ PERFECT_WORLD_PROFILES: dict[str, SettlementProfile] = {
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys._MEIPASS)
 else:
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = BASE_DIR / "模板" / "结算模板"
 
 
@@ -105,18 +105,25 @@ def _get_unit_price(content, prices, default_price):
 
 
 def read_feishu_data(year, month, profile: SettlementProfile):
-    """从飞书读取指定月份的交付数据"""
+    """从飞书读取结算数据。
+
+    结算范围：交付日期在 [上月1号, 本月月底) 且 J 列状态=已交付（未请款）的记录。
+    包含上月部分，用于补漏上月结算之后才录入/交付的需求。
+    """
     client = FeishuClient(profile.sheet_id)
     data = client.read_sheet(profile.sheet_id, 'A1:O')
 
-    month_start = datetime(year, month, 1)
-    if month == 12:
-        month_end = datetime(year + 1, 1, 1)
+    if month == 1:
+        prev_month_start = datetime(year - 1, 12, 1)
     else:
-        month_end = datetime(year, month + 1, 1)
+        prev_month_start = datetime(year, month - 1, 1)
+    if month == 12:
+        next_month_start = datetime(year + 1, 1, 1)
+    else:
+        next_month_start = datetime(year, month + 1, 1)
     base = datetime(1899, 12, 30)
-    serial_start = (month_start - base).days
-    serial_end = (month_end - base).days
+    serial_start = (prev_month_start - base).days
+    serial_end = (next_month_start - base).days
 
     records = []
     for i, row in enumerate(data):
@@ -130,6 +137,11 @@ def read_feishu_data(year, month, profile: SettlementProfile):
             if not (serial_start <= g_num < serial_end):
                 continue
         except (TypeError, ValueError):
+            continue
+
+        # J 列（index 9）= 交付状态，必须是已交付（未请款）才纳入结算
+        status = str(row[9] or "").strip() if len(row) > 9 else ""
+        if status != "已交付":
             continue
 
         records.append({
