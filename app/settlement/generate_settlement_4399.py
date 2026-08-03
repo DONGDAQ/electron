@@ -366,21 +366,10 @@ def generate_all(year: int, month: int, exchange_rate: float) -> dict:
     boqi_records = read_feishu_data_boqi(year, month)
     if boqi_records:
         _process_project(boqi_records, "波奇", year, month, output_dir, exchange_rate, result)
-        _mark_boqi_billed(boqi_records)
 
     _generate_summary_excel(result, year, month, output_dir)
 
     return result
-
-
-def _mark_boqi_billed(records: list[dict]) -> None:
-    """结算成功后，把波奇在线表对应行 G 列状态改为 已请款。"""
-    client = FeishuClient(sheet_id=SHEET_ID_BOQI, spreadsheet_token=SPREADSHEET_TOKEN_BOQI)
-    for rec in records:
-        try:
-            client.write_cell(rec["row_index"], 6, "已请款")  # G 列（0-based index 6）
-        except Exception as exc:
-            print(f"  [警告] 行{rec['row_index']} 标记已请款失败: {exc}")
 
 
 def _generate_summary_excel(result: dict, year: int, month: int, output_dir: Path):
