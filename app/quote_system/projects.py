@@ -276,6 +276,21 @@ PROJECTS: dict[str, ProjectConfig] = {
         sheet_id="RCwC8C",
         spreadsheet_token="FOF5wRPcfil8nvkLEnCc9qrXn4b",
     ),
+    "lmc": ProjectConfig(
+        key="lmc",
+        display_name="LMC",
+        aliases=("LMC", "lmc", "电心"),
+        template_file="",
+        history_dir="电心/LMC",
+        default_languages=(),
+        prices={},
+        generator="lmc_settlement",
+        file_prefix="",
+        company="电心",
+        sort_order=14,
+        sheet_id="ccD6G3",
+        spreadsheet_token="PBgBsg5Wih1twztVLVKc8NwXnXd",
+    ),
 }
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "project_config.json"

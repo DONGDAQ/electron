@@ -2104,6 +2104,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
         'tk': { preview: null, generate: '/api/settlement/tk/generate', bill: 'tk' },
         '4399': { preview: '/api/settlement_4399/preview', generate: '/api/settlement_4399/generate', bill: '4399' },
         'md': { preview: '/api/settlement_md/preview', generate: '/api/settlement_md/generate' },
+        'lmc': { preview: '/api/settlement_lmc/preview', generate: '/api/settlement_lmc/generate' },
     };
 
     function getSettleConfig() {
@@ -2427,8 +2428,8 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
               + '<td class="r">' + (amount * 1.06).toFixed(2) + '</td>';
             tbody.appendChild(tr);
           });
-        } else if (projKey === 'md') {
-          // MD结算预览（单价已是含税价）
+        } else if (projKey === 'md' || projKey === 'lmc') {
+          // MD/LMC结算预览（单价已是含税价）
           const total = result.data.reduce(function(s, r) { return s + (parseFloat(r.word_count) || 0); }, 0);
           const totalAmount = total * 0.424;
           document.getElementById('settleCount').textContent = result.data.length;
@@ -2643,9 +2644,10 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           }
           loadSettleHistory(year, months[months.length - 1], projKey);
           lucide.createIcons();
-        } else if (projKey === 'md') {
-          // MD生成结算单（确认版Excel + 盖章版PDF + 請求書PDF）
-          showToast('已生成 ' + result.count + ' 条记录的MD结算单');
+        } else if (projKey === 'md' || projKey === 'lmc') {
+          // MD/LMC生成结算单（确认版Excel + 盖章版PDF + 請求書PDF）
+          var dxName = projKey === 'lmc' ? 'LMC' : 'MD';
+          showToast('已生成 ' + result.count + ' 条记录的' + dxName + '结算单');
           var resultsHtml = '';
           if (result.confirm) {
             var cPath = escHtml(result.confirm.path).replace(/\\/g, '\\\\');
@@ -3385,6 +3387,7 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       {key:'tk',name:'TK项目',company:'Bilibili',type:'tk'},
       {key:'4399',name:'4399',company:'4399',type:'s94399'},
       {key:'md',name:'MD',company:'电心',type:'md'},
+      {key:'lmc',name:'LMC',company:'电心',type:'md'},
     ];
 
     function initWbMonthPicker() {
@@ -4014,8 +4017,8 @@ menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;background
       if ({{ selected_project.key | tojson }} === 'zulong' && !workspaceHash) {
         switchPage('zulong-settlement');
       }
-      if ({{ selected_project.key | tojson }} === 'md' && !workspaceHash) {
-        // MD：自动切换到结算模式
+      if ({{ selected_project.key | tojson }} === 'md' || {{ selected_project.key | tojson }} === 'lmc') {
+        // MD/LMC：自动切换到结算模式
         switchMode('settle');
         loadSettlePreview();
       }

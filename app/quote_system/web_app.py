@@ -2098,8 +2098,9 @@ def settlement_files() -> Response:
         search_dir = settlement_dir / f"{year}年{month_display}月" / "4399"
     elif project_key == "zulong":
         search_dir = settlement_dir / f"{year}年{month_display}月" / "祖龙"
-    elif project_key == "md":
-        search_dir = settlement_dir / f"{year}年{month_display}月" / "电心" / "MD"
+    elif project_key in ("md", "lmc"):
+        # 电心项目（MD/LMC）文件统一放 电心/ 下，按文件名前缀过滤
+        search_dir = settlement_dir / f"{year}年{month_display}月" / "电心"
     else:
         search_dir = settlement_dir
 
@@ -2112,12 +2113,16 @@ def settlement_files() -> Response:
                 "yihuan_nei": "generate_settlement_yh_games",
                 "yihuan_faxing": "generate_settlement_yh_publish",
             }.get(project_key), "【")
+        # 电心（MD/LMC）文件统一在 电心/ 下，按前缀过滤
+        dx_prefix = _DIANXIN_PREFIX.get(project_key)
         for f in sorted(search_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not f.is_file():
                 continue
             if pw_prefix is not None and not f.name.startswith(pw_prefix):
                 continue
-            if project_key not in bill_project_dirs and project_key not in perfect_world_dirs and project_key not in kuluo_dirs and project_key not in ("tk", "md") and year and month:
+            if dx_prefix is not None and not f.name.startswith(dx_prefix):
+                continue
+            if project_key not in bill_project_dirs and project_key not in perfect_world_dirs and project_key not in kuluo_dirs and project_key not in ("tk", "md", "lmc") and year and month:
                 ym = f"{year}年{month_display}月" if month else str(year)
                 if ym not in f.name and f"{year}" not in f.name:
                     continue
@@ -2417,6 +2422,7 @@ SETTLEMENT_WORKBENCH_PROJECTS = [
     {"key": "tk", "name": "TK项目", "company": "Bilibili", "type": "tk"},
     {"key": "4399", "name": "4399", "company": "4399", "type": "4399"},
     {"key": "md", "name": "MD", "company": "电心", "type": "md"},
+    {"key": "lmc", "name": "LMC", "company": "电心", "type": "md"},
 ]
 
 
@@ -2481,6 +2487,16 @@ _PW_FILE_PREFIX = {
     'generate_settlement': '【幻塔结算单】',
     'generate_settlement_yh_games': '【异环结算单】-NTE【游戏内】',
     'generate_settlement_yh_publish': '【异环结算单】-NTE【发行】',
+}
+
+# 电心项目（MD/LMC）模块映射，文件统一放 电心/ 下，用前缀区分
+_DIANXIN_MODULE = {
+    "md": "generate_settlement_md",
+    "lmc": "generate_settlement_lmc",
+}
+_DIANXIN_PREFIX = {
+    "md": "结算单_MD-KR",
+    "lmc": "结算单_LMC-KR",
 }
 
 
@@ -2720,8 +2736,9 @@ def settlement_workbench_preview() -> Response:
             elif proj["type"] == "tk":
                 results.append({**proj, "count": 0, "total_words": 0, "total_amount": 0, "status": "manual"})
             elif proj["type"] == "md":
-                from settlement.generate_settlement_md import read_feishu_data as read_md
-                records = read_md(year, month)
+                import importlib
+                mod = importlib.import_module(f"settlement.{_DIANXIN_MODULE[proj['key']]}")
+                records = mod.read_feishu_data(year, month)
                 total_words = sum(r['word_count'] for r in records)
                 results.append({**proj, "count": len(records), "total_words": total_words, "total_amount": round(total_words * 0.424, 2), "status": "has_data" if len(records) > 0 else "empty"})
         except Exception as e:
@@ -2773,16 +2790,18 @@ def settlement_workbench_generate() -> Response:
             elif proj["type"] == "tk":
                 results[key] = _settle_generate_tk(year, month)
             elif proj["type"] == "md":
-                from settlement.generate_settlement_md import read_feishu_data as read_md, generate_settlement_confirm, generate_settlement_stamp, generate_invoice
-                records = read_md(year, month)
+                import importlib
+                mod = importlib.import_module(f"settlement.{_DIANXIN_MODULE[proj['key']]}")
+                records = mod.read_feishu_data(year, month)
                 if not records:
-                    results[key] = {"status": "error", "message": f"{year}年{month}月没有MD交付记录"}
+                    results[key] = {"status": "error", "message": f"{year}年{month}月没有{proj['name']}交付记录"}
                     continue
-                output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心" / "MD"
+                # 电心项目文件统一放 电心/ 下
+                output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心"
                 output_dir.mkdir(parents=True, exist_ok=True)
-                confirm_path = generate_settlement_confirm(records, year, month, output_dir)
-                _, stamp_pdf = generate_settlement_stamp(records, year, month, output_dir)
-                _, invoice_pdf = generate_invoice(records, year, month, output_dir)
+                confirm_path = mod.generate_settlement_confirm(records, year, month, output_dir)
+                _, stamp_pdf = mod.generate_settlement_stamp(records, year, month, output_dir)
+                _, invoice_pdf = mod.generate_invoice(records, year, month, output_dir)
                 total_amount = sum(r['word_count'] for r in records) * 0.424
                 results[key] = {
                     "status": "success",
@@ -2797,16 +2816,16 @@ def settlement_workbench_generate() -> Response:
 
     _refresh_report_cache_async()
     return jsonify({"status": "success", "results": results, "year": year, "month": month})
-# ======================== MD结算 ========================
-@app.get("/api/settlement_md/preview")
-def settlement_md_preview() -> Response:
-    """预览MD结算数据"""
-    from settlement.generate_settlement_md import read_feishu_data
+# ======================== 电心(MD/LMC)结算 ========================
+def _dianxin_preview(module_name: str, project_display: str):
+    """电心项目（MD/LMC）结算预览"""
+    import importlib
+    mod = importlib.import_module(f"settlement.{module_name}")
     year = int(request.args.get("year", 0))
     month = int(request.args.get("month", 0))
     validate_year_month(year, month)
 
-    records = read_feishu_data(year, month)
+    records = mod.read_feishu_data(year, month)
     total = sum(r['word_count'] for r in records)
     return jsonify({
         "status": "success",
@@ -2816,39 +2835,31 @@ def settlement_md_preview() -> Response:
     })
 
 
-@app.post("/api/settlement_md/generate")
-def settlement_md_generate() -> Response:
-    """生成MD结算单（确认版Excel + 盖章版PDF + 請求書PDF）"""
-    sys.modules.pop('settlement.generate_settlement_md', None)
-    from settlement.generate_settlement_md import (
-        read_feishu_data, generate_settlement_confirm, generate_settlement_stamp, generate_invoice
-    )
+def _dianxin_generate(module_name: str, project_display: str):
+    """电心项目（MD/LMC）结算生成：确认版Excel + 盖章版PDF + 請求書PDF，统一放 电心/ 下"""
+    import importlib
+    mod = importlib.import_module(f"settlement.{module_name}")
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     validate_year_month(year, month)
 
-    records = read_feishu_data(year, month)
+    records = mod.read_feishu_data(year, month)
     if not records:
-        return jsonify({"status": "error", "message": f"{year}年{month}月没有MD交付记录"}), 404
+        return jsonify({"status": "error", "message": f"{year}年{month}月没有{project_display}交付记录"}), 404
 
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心" / "MD"
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "电心"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 生成确认版Excel
-    confirm_path = generate_settlement_confirm(records, year, month, output_dir)
-
-    # 生成盖章版PDF（Excel 已删除）
-    _, stamp_pdf = generate_settlement_stamp(records, year, month, output_dir)
-
-    # 生成請求書PDF（Excel 已删除）
-    _, invoice_pdf = generate_invoice(records, year, month, output_dir)
+    confirm_path = mod.generate_settlement_confirm(records, year, month, output_dir)
+    _, stamp_pdf = mod.generate_settlement_stamp(records, year, month, output_dir)
+    _, invoice_pdf = mod.generate_invoice(records, year, month, output_dir)
 
     total_amount = sum(r['word_count'] for r in records) * 0.424
 
     return jsonify({
         "status": "success",
-        "message": f"已生成 {len(records)} 条记录的MD结算单",
+        "message": f"已生成 {len(records)} 条记录的{project_display}结算单",
         "count": len(records),
         "confirm": {"path": str(confirm_path), "name": confirm_path.name},
         "stamp_pdf": {"path": str(stamp_pdf), "name": stamp_pdf.name},
@@ -2856,6 +2867,32 @@ def settlement_md_generate() -> Response:
         "total_amount": round(total_amount, 2),
         "total_words": sum(r['word_count'] for r in records),
     })
+
+
+@app.get("/api/settlement_md/preview")
+def settlement_md_preview() -> Response:
+    """预览MD结算数据"""
+    return _dianxin_preview("generate_settlement_md", "MD")
+
+
+@app.post("/api/settlement_md/generate")
+def settlement_md_generate() -> Response:
+    """生成MD结算单（确认版Excel + 盖章版PDF + 請求書PDF）"""
+    sys.modules.pop('settlement.generate_settlement_md', None)
+    return _dianxin_generate("generate_settlement_md", "MD")
+
+
+@app.get("/api/settlement_lmc/preview")
+def settlement_lmc_preview() -> Response:
+    """预览LMC结算数据"""
+    return _dianxin_preview("generate_settlement_lmc", "LMC")
+
+
+@app.post("/api/settlement_lmc/generate")
+def settlement_lmc_generate() -> Response:
+    """生成LMC结算单（确认版Excel + 盖章版PDF + 請求書PDF）"""
+    sys.modules.pop('settlement.generate_settlement_lmc', None)
+    return _dianxin_generate("generate_settlement_lmc", "LMC")
 
 
 # ======================== 结算文件树 ========================
