@@ -44,7 +44,8 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 TK_FILL_THREAD: threading.Thread | None = None
 TK_FILL_RUNNING: bool = False
-FILL_4399_PROCESS: subprocess.Popen | None = None
+FILL_4399_THREAD: threading.Thread | None = None
+FILL_4399_RUNNING: bool = False
 REPORT_REFRESH_RUNNING: bool = False
 _task_lock = threading.Lock()
 LOCAL_ONLY_ENDPOINTS = {"/delete-quote", "/open-file", "/open-folder"}
@@ -877,51 +878,57 @@ def tk_fill_status() -> Response:
 def start_fill_4399() -> Response:
     """启动 4399 填表：下载 G 列 HTML → 解析 → 填写 K/L/M 列。"""
     _log_operation("fill_4399_start", request)
-    global FILL_4399_PROCESS
+    global FILL_4399_THREAD, FILL_4399_RUNNING
     try:
-        if FILL_4399_PROCESS and FILL_4399_PROCESS.poll() is None:
-            return jsonify({
-                "status": "error",
-                "message": "4399 填表已经在运行，请等待完成。",
-            }), 409
+        with _task_lock:
+            if FILL_4399_RUNNING:
+                return jsonify({
+                    "status": "error",
+                    "message": "4399 填表已经在运行，请等待完成。",
+                }), 409
+            FILL_4399_RUNNING = True
 
-        args = [
-            sys.executable,
-            "-m",
-            "quote_system.auto_quote_4399",
-        ]
-        if request.form.get("dry_run") == "1":
-            args.append("--dry-run")
+        dry_run = request.form.get("dry_run") == "1"
 
         log_dir = OUTPUTS_DIR / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "4399_fill.log"
         _write_fill_meta(log_dir, "4399", request)  # 记录触发来源（test/manual）
-        log_file = log_path.open("w", encoding="utf-8")
-        try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            FILL_4399_PROCESS = subprocess.Popen(
-                args,
-                cwd=str(ROOT),
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                creationflags=creationflags,
-            )
-        except Exception:
-            log_file.close()
-            raise
+
+        def _run_4399_fill() -> None:
+            global FILL_4399_RUNNING
+            import contextlib
+            from .auto_quote_4399 import run, _configure_output
+
+            # 用 contextlib 重定向 stdout/stderr，避免影响 Flask 其他线程的输出
+            log_file = open(log_path, "w", encoding="utf-8")
+            try:
+                with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                    _configure_output()
+                    run(dry_run=dry_run)
+            except Exception:
+                traceback.print_exc()
+            finally:
+                log_file.close()
+                FILL_4399_RUNNING = False
+
+        FILL_4399_THREAD = threading.Thread(target=_run_4399_fill, daemon=True)
+        FILL_4399_THREAD.start()
+
         return jsonify({
             "status": "success",
             "message": "已启动 4399 自动填表。正在下载 HTML → 解析 → 填写 K/L/M 列。",
             "log_path": str(log_path),
         })
     except Exception as exc:
+        with _task_lock:
+            FILL_4399_RUNNING = False
         return jsonify({"status": "error", "message": str(exc)}), 500
 
 
 @app.get("/fill-4399/status")
 def fill_4399_status() -> Response:
-    running = FILL_4399_PROCESS is not None and FILL_4399_PROCESS.poll() is None
+    running = FILL_4399_RUNNING
     log_path = OUTPUTS_DIR / "logs" / "4399_fill.log"
     log_content = ""
     if log_path.exists():
