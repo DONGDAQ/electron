@@ -454,6 +454,9 @@
                 <button class="primary-button" id="batchSettleBtn" onclick="batchGeneratePerfectWorld()" style="display:none;background:var(--accent);">
                   <i data-lucide="zap"></i> 一键生成三个项目
                 </button>
+                <button class="primary-button" id="dxBatchBtn" onclick="batchGenerateDianxin()" style="display:none;background:var(--accent);">
+                  <i data-lucide="zap"></i> 一键生成MD+LMC
+                </button>
                 <button class="ghost-button" id="pwNotifyTextBtn" onclick="generatePWNotifyText()" style="display:none;">
                   <i data-lucide="message-square-text"></i> 生成通知文本
                 </button>
@@ -2027,8 +2030,10 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
           var isBillProj = pk === 'maniang' || pk === 'bang2' || pk === 'hbr' || pk === 'bang2_shequ';
           var isTk = pk === 'tk';
           var isPerfectWorld = pk === 'huanta' || pk === 'yihuan_nei' || pk === 'yihuan_faxing';
+          var isDianxin = pk === 'md' || pk === 'lmc';
           document.getElementById('batchSettleBtn').style.display = isPerfectWorld ? '' : 'none';
           document.getElementById('pwNotifyTextBtn').style.display = isPerfectWorld ? '' : 'none';
+          document.getElementById('dxBatchBtn').style.display = isDianxin ? '' : 'none';
           document.getElementById('sealedSettleBtn').style.display = isBillProj ? '' : 'none';
           document.getElementById('sealedSettleBtn').disabled = true;
           if (!_restored) {
@@ -2040,6 +2045,7 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
             document.getElementById('generateSettleBtn').style.display = 'none';
             document.getElementById('batchSettleBtn').style.display = 'none';
             document.getElementById('pwNotifyTextBtn').style.display = 'none';
+            document.getElementById('dxBatchBtn').style.display = 'none';
             document.getElementById('sealedSettleBtn').style.display = 'none';
             document.getElementById('tkCopyOrderlistBtn').style.display = '';
             document.getElementById('tkGenerateBtn').style.display = '';
@@ -2744,6 +2750,62 @@ menu.style.cssText = `position: fixed; left: ${x}px; top: ${y}px; background: ${
       finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="zap"></i> 一键生成三个项目';
+        lucide.createIcons();
+      }
+    }
+
+    async function batchGenerateDianxin() {
+      const year = document.getElementById('settleYear').value;
+      const month = document.getElementById('settleMonth').value;
+      const btn = document.getElementById('dxBatchBtn');
+      if (!confirm('确认一键生成 ' + year + '年' + month + '月 MD 和 LMC 的结算单？')) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="loading"></i> 生成中...';
+      lucide.createIcons();
+
+      const projects = [
+        {key: 'md', name: 'MD', api: '/api/settlement_md/generate'},
+        {key: 'lmc', name: 'LMC', api: '/api/settlement_lmc/generate'},
+      ];
+      var htmlParts = [];
+      var totalCount = 0;
+      try {
+        for (const p of projects) {
+          var resp = await fetch(p.api, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({year: parseInt(year), month: parseInt(month)}),
+          });
+          var result = await resp.json();
+          if (result.status !== 'success') {
+            htmlParts.push('<div class="settle-result-card" style="cursor:default;">'
+              + '<i data-lucide="x-circle" style="width:16px;height:16px;color:#c0392b;"></i> '
+              + escHtml(p.name) + ': ' + escHtml(result.message || '生成失败') + '</div>');
+            continue;
+          }
+          totalCount += result.count;
+          htmlParts.push('<div style="margin-bottom:6px;"><strong>' + escHtml(p.name) + '</strong> <span style="color:var(--muted);font-size:11px;">' + result.count + '条 ¥' + (result.total_amount||0).toFixed(2) + '</span></div>');
+          if (result.confirm) {
+            htmlParts.push('<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(result.confirm.path).replace(/\\/g,'\\\\') + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#217746;"></i>' + escHtml(result.confirm.name) + '（确认版）</span>');
+          }
+          if (result.stamp_pdf) {
+            htmlParts.push('<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(result.stamp_pdf.path).replace(/\\/g,'\\\\') + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#c0392b;"></i>' + escHtml(result.stamp_pdf.name) + '（盖章版PDF）</span>');
+          }
+          if (result.invoice_pdf) {
+            htmlParts.push('<span class="settle-result-card" onclick="openSettleFile(\'' + escHtml(result.invoice_pdf.path).replace(/\\/g,'\\\\') + '\')" style="cursor:pointer;">'
+              + '<i data-lucide="file-text" style="width:16px;height:16px;color:#d35400;"></i>' + escHtml(result.invoice_pdf.name) + '（請求書PDF）</span>');
+          }
+        }
+        document.getElementById('settleResults').innerHTML = htmlParts.join('') + document.getElementById('settleResults').innerHTML;
+        showToast('已生成 ' + totalCount + ' 条记录（MD+LMC）');
+        loadSettleHistory(year, month, document.getElementById('currentProject').value);
+        lucide.createIcons();
+      } catch(e) { showToast('网络错误: ' + e.message, true); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="zap"></i> 一键生成MD+LMC';
         lucide.createIcons();
       }
     }
