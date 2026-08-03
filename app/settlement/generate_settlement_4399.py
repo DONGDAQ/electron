@@ -179,15 +179,6 @@ def read_feishu_data_boqi(year: int, month: int) -> list[dict]:
     client = FeishuClient(sheet_id=SHEET_ID_BOQI, spreadsheet_token=SPREADSHEET_TOKEN_BOQI)
     rows = client.read_sheet()
 
-    month_start = datetime(year, month, 1)
-    if month == 12:
-        month_end = datetime(year + 1, 1, 1)
-    else:
-        month_end = datetime(year, month + 1, 1)
-    base = datetime(1899, 12, 30)
-    serial_start = (month_start - base).days
-    serial_end = (month_end - base).days
-
     records = []
     for i, row in enumerate(rows):
         if i == 0:
@@ -198,11 +189,10 @@ def read_feishu_data_boqi(year: int, month: int) -> list[dict]:
             continue
         try:
             deliv_serial = float(deliv_val)
-            if not (serial_start <= deliv_serial < serial_end):
-                continue
         except (TypeError, ValueError):
             continue
 
+        # 波奇只按状态过滤：已交付 = 未请款，全部纳入结算范围（不限定交付月份）
         status = str(row[6] or "").strip() if len(row) > 6 else ""
         if status != "已交付":
             continue
@@ -376,10 +366,21 @@ def generate_all(year: int, month: int, exchange_rate: float) -> dict:
     boqi_records = read_feishu_data_boqi(year, month)
     if boqi_records:
         _process_project(boqi_records, "波奇", year, month, output_dir, exchange_rate, result)
+        _mark_boqi_billed(boqi_records)
 
     _generate_summary_excel(result, year, month, output_dir)
 
     return result
+
+
+def _mark_boqi_billed(records: list[dict]) -> None:
+    """结算成功后，把波奇在线表对应行 G 列状态改为 已请款。"""
+    client = FeishuClient(sheet_id=SHEET_ID_BOQI, spreadsheet_token=SPREADSHEET_TOKEN_BOQI)
+    for rec in records:
+        try:
+            client.write_cell(rec["row_index"], 6, "已请款")  # G 列（0-based index 6）
+        except Exception as exc:
+            print(f"  [警告] 行{rec['row_index']} 标记已请款失败: {exc}")
 
 
 def _generate_summary_excel(result: dict, year: int, month: int, output_dir: Path):
