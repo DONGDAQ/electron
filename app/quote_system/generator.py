@@ -122,6 +122,9 @@ def generate_quote(root: Path, request: QuoteRequest) -> QuoteResult:
 
     if request.output_path:
         custom_path = request.output_path / final_path.name
+        # 若 output_path 与默认保存目录相同，跳过重复复制（避免同名文件被误判重名、多出 _2 后缀）
+        if custom_path.parent == default_path.parent:
+            return QuoteResult(output_path=default_path, stats=stats, final_path=default_path)
         custom_path = avoid_overwrite(custom_path)
         custom_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(default_path, custom_path)
