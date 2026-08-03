@@ -2091,7 +2091,7 @@ def settlement_files() -> Response:
     elif project_key in diezhi_dirs:
         search_dir = settlement_dir / f"{year}年{month_display}月" / diezhi_dirs[project_key]
     elif project_key == "tk":
-        search_dir = settlement_dir / f"{year}年{month_display}月" / "TK"
+        search_dir = settlement_dir / f"{year}年{month_display}月" / "Bilibili" / "TK"
     elif project_key == "4399":
         search_dir = settlement_dir / f"{year}年{month_display}月" / "4399"
     elif project_key == "zulong":
@@ -2618,7 +2618,7 @@ def _settle_generate_4399(year, month, exchange_rate):
 
 def _settle_generate_tk(year, month):
     from settlement.generate_settlement_tk import generate_settlement_pdf, generate_invoice_pdf
-    output_dir = get_settlement_dir() / f"{year}年{month}月" / "TK"
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "Bilibili" / "TK"
     output_dir.mkdir(parents=True, exist_ok=True)
     if _check_settlement_exists(output_dir, "【"):
         return {"status": "exists", "message": "TK当月已有结算文件，请检查是否重复结算"}

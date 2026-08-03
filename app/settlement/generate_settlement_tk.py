@@ -23,7 +23,7 @@ SETTLEMENT_TEMPLATE = "【Trickcal】翻译费用明细及结算清单2026年3�
 INVOICE_TEMPLATE = "Invoice-【Trickcal】2026年3月翻译费用模板.xlsx"
 
 PROJECT_NAME = "TK"
-COMPANY = "TK"
+COMPANY = "Bilibili"
 
 
 def copy_orderlist(year: int, month: int) -> Path:
