@@ -20,8 +20,10 @@ from settlement._com_utils import com_excel
 
 if getattr(sys, 'frozen', False):
     ROOT = Path(sys._MEIPASS)
+    CONFIG_DIR = ROOT / "config"
 else:
-    ROOT = Path(__file__).resolve().parent.parent.parent
+    ROOT = Path(__file__).resolve().parent.parent
+    CONFIG_DIR = ROOT / "config"
 TEMPLATE_DIR = ROOT / "模板" / "结算模板"
 
 SETTLEMENT_TEMPLATE = "01【结算单】-2026年4月份翻译费用4399模板.xlsx"
@@ -37,7 +39,6 @@ UNIT_PRICE = 0.52
 DATA_START_ROW = 16
 DATA_END_ROW = 40
 
-CONFIG_DIR = ROOT / "app" / "quote_system" / "config"
 PROJECT_CODE_FILE = CONFIG_DIR / "4399_projects.json"
 
 DEFAULT_PROJECT_CODES = {
@@ -150,6 +151,13 @@ def read_feishu_data_4399(year: int, month: int) -> dict[str, list[dict]]:
         req_name = str(row[1] or "").strip() if len(row) > 1 else ""
         deliv_date = deliv_serial
 
+        # 单价：优先读 I 列（index 8，在线表记录的单价），为空则用默认 UNIT_PRICE
+        price_val = row[8] if len(row) > 8 else None
+        try:
+            unit_price = float(price_val) if price_val not in (None, "") else UNIT_PRICE
+        except (TypeError, ValueError):
+            unit_price = UNIT_PRICE
+
         k_val = float(row[10]) if len(row) > 10 and row[10] is not None else 0
         l_val = float(row[11]) if len(row) > 11 and row[11] is not None else 0
         m_val = float(row[12]) if len(row) > 12 and row[12] is not None else 0
@@ -160,7 +168,7 @@ def read_feishu_data_4399(year: int, month: int) -> dict[str, list[dict]]:
             "req_name": req_name,
             "deliv_date": deliv_date,
             "word_count": word_count,
-            "unit_price": UNIT_PRICE,
+            "unit_price": unit_price,
             "row_index": i + 1,
         })
 
@@ -261,7 +269,7 @@ def generate_settlement_excel(records: list[dict], project_name: str, year: int,
             ws.cell(row=r, column=4, value=dt)
             ws.cell(row=r, column=4).number_format = "m/d"
         ws.cell(row=r, column=5, value=rec["word_count"])
-        ws.cell(row=r, column=6, value=UNIT_PRICE)
+        ws.cell(row=r, column=6, value=rec.get("unit_price", UNIT_PRICE))
 
     last_data_row = DATA_START_ROW + len(records) - 1
     for r in range(last_data_row + 1, DATA_END_ROW + 1):
