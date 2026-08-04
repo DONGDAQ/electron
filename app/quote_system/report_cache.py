@@ -10,7 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import openpyxl
 
-OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")
+# 项目根 = quote_system 的父的父；OUTPUTS_DIR 指向项目根的 outputs（日志/缓存/报告）
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+OUTPUTS_DIR = _PROJECT_ROOT / "outputs"
+if not OUTPUTS_DIR.exists():
+    OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")  # 兼容旧路径
 CACHE_FILE = OUTPUTS_DIR / "cache" / "report_dashboard.json"
 
 
@@ -397,7 +401,8 @@ def sync_report_cache() -> dict:
                     "date": deliv_fmt,
                 })
     except Exception:
-        pass
+        import traceback
+        print(f"[报告缓存] TK 数据同步失败: {traceback.format_exc()}")
 
     # 完美世界
     try:
@@ -453,7 +458,8 @@ def sync_report_cache() -> dict:
             unsettled_count += proj_count
             unsettled_amount += proj_amount
     except Exception:
-        pass
+        import traceback
+        print(f"[报告缓存] 完美世界数据同步失败: {traceback.format_exc()}")
 
     # 4399
     try:
@@ -541,7 +547,8 @@ def sync_report_cache() -> dict:
         unsettled_count += count_4399
         unsettled_amount += amount_4399
     except Exception:
-        pass
+        import traceback
+        print(f"[报告缓存] 4399数据同步失败: {traceback.format_exc()}")
 
     result = {
         "sync_time": datetime.now().isoformat(),

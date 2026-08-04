@@ -10,7 +10,10 @@ from pathlib import Path
 from logging import basicConfig, getLogger, INFO
 
 ROOT = Path(__file__).parent
-LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs"
+_OUTPUTS_DIR = ROOT.parent / "outputs"
+if not _OUTPUTS_DIR.exists():
+    _OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")  # 兼容旧路径
+LOG_DIR = _OUTPUTS_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 basicConfig(

@@ -36,7 +36,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 UPLOAD_ROOT = ROOT / "outputs" / "uploads"
 
-OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")
+# 注意：有两个 outputs 目录——app/outputs（临时下载）与项目根 outputs（日志/缓存/报告）
+# OUTPUTS_DIR 必须指向项目根（原硬编码 D:\baojia\electron\outputs）
+OUTPUTS_DIR = ROOT.parent / "outputs"
+if not OUTPUTS_DIR.exists():
+    OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")  # 兼容旧路径
 
 app = Flask(__name__)
 app.secret_key = "local-quote-system"

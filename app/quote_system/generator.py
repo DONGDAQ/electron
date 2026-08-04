@@ -10,7 +10,10 @@ import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
 
-_MANIFEST_PATH = Path(r"D:\baojia\electron\outputs\cache\formula_cache_manifest.json")
+_OUTPUTS_DIR = Path(__file__).resolve().parent.parent.parent / "outputs"
+if not _OUTPUTS_DIR.exists():
+    _OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")  # 兼容旧路径
+_MANIFEST_PATH = _OUTPUTS_DIR / "cache" / "formula_cache_manifest.json"
 
 
 def _load_manifest() -> dict:

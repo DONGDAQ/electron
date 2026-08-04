@@ -6,8 +6,11 @@ import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs" / "auto_quote"
-FILL_LOG_DIR = Path(r"D:\baojia\electron\outputs") / "logs"
+_OUTPUTS_DIR = ROOT.parent / "outputs"
+if not _OUTPUTS_DIR.exists():
+    _OUTPUTS_DIR = Path(r"D:\baojia\electron\outputs")  # 兼容旧路径
+LOG_DIR = _OUTPUTS_DIR / "logs" / "auto_quote"
+FILL_LOG_DIR = _OUTPUTS_DIR / "logs"
 
 # ---- 防止并发执行 ----
 LOCK_FILE = LOG_DIR / ".auto_quote.lock"
