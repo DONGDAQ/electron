@@ -550,6 +550,86 @@ def sync_report_cache() -> dict:
         import traceback
         print(f"[报告缓存] 4399数据同步失败: {traceback.format_exc()}")
 
+    # 电心（MD/LMC）：从飞书表读已交付（未结算）记录，单价 0.424
+    try:
+        from quote_system.feishu_client import FeishuClient
+        from settlement.generate_settlement_md import (
+            SPREADSHEET_TOKEN as DX_MD_TOKEN, SHEET_ID as DX_MD_SHEET,
+        )
+        from settlement.generate_settlement_lmc import (
+            SPREADSHEET_TOKEN as DX_LMC_TOKEN, SHEET_ID as DX_LMC_SHEET,
+        )
+        base_dx = datetime(1899, 12, 30)
+        dx_projects = [
+            ("MD", DX_MD_TOKEN, DX_MD_SHEET),
+            ("LMC", DX_LMC_TOKEN, DX_LMC_SHEET),
+        ]
+        dx_count_total = 0
+        dx_amount_total = 0.0
+        for dx_name, dx_token, dx_sheet in dx_projects:
+            try:
+                client_dx = FeishuClient(spreadsheet_token=dx_token, sheet_id=dx_sheet)
+                dx_rows = client_dx.read_sheet()
+            except Exception:
+                print(f"[报告缓存] 电心 {dx_name} 读取飞书表失败")
+                continue
+            dx_count = 0
+            dx_amount = 0.0
+            dx_items = []
+            for i, row in enumerate(dx_rows):
+                if i == 0:
+                    continue
+                # I列(index 8): 交付状态，"已结算"=已完成，其余（已交付/已开始等）都是待结算
+                dx_status = str(row[8] or "").strip() if len(row) > 8 else ""
+                if dx_status == "已结算":
+                    continue
+                # F列(index 5): 交付日期
+                dx_deliv = row[5] if len(row) > 5 else None
+                if dx_deliv is None:
+                    continue
+                try:
+                    dx_deliv_num = float(dx_deliv)
+                except (TypeError, ValueError):
+                    continue
+                dx_deliv_date = base_dx + timedelta(days=dx_deliv_num)
+                if dx_deliv_date.date() < last_month_start:
+                    continue
+                # H列(index 7): 文字数
+                try:
+                    dx_words = float(row[7]) if len(row) > 7 and row[7] is not None else 0
+                except (TypeError, ValueError):
+                    dx_words = 0
+                if dx_words <= 0:
+                    continue
+                dx_amt = dx_words * 0.424
+                dx_count += 1
+                dx_amount += dx_amt
+                dx_req = str(row[1] or "")[:40] if len(row) > 1 else ""
+                dx_items.append({
+                    "name": dx_req,
+                    "amount": round(dx_amt, 2),
+                    "date": dx_deliv_date.strftime("%m/%d"),
+                })
+                # 交付日期在上月/本月的计入本月总额
+                if dx_deliv_date.date() >= last_month_start:
+                    month_total_amount += dx_amt
+            if dx_count:
+                label_dx = "电心"
+                company_summary[label_dx]["amount"] += dx_amount
+                company_summary[label_dx]["count"] += dx_count
+                if dx_name not in company_summary[label_dx]["projects"]:
+                    company_summary[label_dx]["projects"][dx_name] = {"count": 0, "amount": 0.0, "items": []}
+                company_summary[label_dx]["projects"][dx_name]["count"] += dx_count
+                company_summary[label_dx]["projects"][dx_name]["amount"] += dx_amount
+                company_summary[label_dx]["projects"][dx_name]["items"].extend(dx_items)
+            dx_count_total += dx_count
+            dx_amount_total += dx_amount
+        unsettled_count += dx_count_total
+        unsettled_amount += dx_amount_total
+    except Exception:
+        import traceback
+        print(f"[报告缓存] 电心数据同步失败: {traceback.format_exc()}")
+
     result = {
         "sync_time": datetime.now().isoformat(),
         "month_file_count": month_file_count,
