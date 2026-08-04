@@ -20,7 +20,6 @@ app/汇总/
 app/结算/
 app/config/project_config.json
 app/config/save_path_config.json
-app/config/credentials.json
 app/config/feishu_browser_profile/
 ngrok.exe
 ngrok.zip
