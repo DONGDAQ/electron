@@ -2845,6 +2845,25 @@ def _dianxin_preview(module_name: str, project_display: str):
     })
 
 
+def _mark_dianxin_settled(module_name: str, records: list[dict]) -> list[int]:
+    """电心项目（MD/LMC）结算后，将飞书表 I 列状态改为"已结算"。返回失败的行号列表。"""
+    import importlib
+    mod = importlib.import_module(f"settlement.{module_name}")
+    from .feishu_client import FeishuClient
+    client = FeishuClient(spreadsheet_token=mod.SPREADSHEET_TOKEN, sheet_id=mod.SHEET_ID)
+    failed = []
+    for r in records:
+        row_index = r.get('row_index')
+        if not row_index:
+            continue
+        try:
+            client.write_cell(row_index, 8, "已结算")
+        except Exception as e:
+            print(f"电心 {mod.SHEET_ID} 行{row_index} 标记已结算失败: {e}")
+            failed.append(row_index)
+    return failed
+
+
 def _dianxin_generate(module_name: str, project_display: str):
     """电心项目（MD/LMC）结算生成：确认版Excel + 盖章版PDF + 請求書PDF，统一放 电心/ 下"""
     import importlib
@@ -2867,6 +2886,10 @@ def _dianxin_generate(module_name: str, project_display: str):
 
     total_amount = sum(r['word_count'] for r in records) * 0.424
 
+    # 结算成功后自动标记飞书表状态为"已结算"
+    failed_rows = _mark_dianxin_settled(module_name, records)
+    _refresh_report_cache_async()
+
     return jsonify({
         "status": "success",
         "message": f"已生成 {len(records)} 条记录的{project_display}结算单",
@@ -2876,6 +2899,7 @@ def _dianxin_generate(module_name: str, project_display: str):
         "invoice_pdf": {"path": str(invoice_pdf), "name": invoice_pdf.name},
         "total_amount": round(total_amount, 2),
         "total_words": sum(r['word_count'] for r in records),
+        "feishu_mark": "ok" if not failed_rows else f"failed: {failed_rows}",
     })
 
 
