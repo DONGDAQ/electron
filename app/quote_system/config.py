@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -99,3 +100,50 @@ def reset_to_default(project_key: str):
             json.dump(configs, f, ensure_ascii=False, indent=2)
         _config_cache = configs
         _config_cache_mtime = CONFIG_PATH.stat().st_mtime
+
+
+# ======================== 敏感凭证（credentials.json，已 gitignore） ========================
+# 读取顺序：credentials.json 配置文件 > 环境变量 > 默认值。
+# 凭证不应硬编码在源码中，如需更换请直接编辑 app/config/credentials.json。
+
+CREDENTIALS_PATH = Path(__file__).parent.parent / "config" / "credentials.json"
+
+_credentials_cache: dict | None = None
+
+
+def get_credentials() -> dict:
+    """读取 credentials.json，失败/缺失返回空 dict。带进程内缓存。"""
+    global _credentials_cache
+    if _credentials_cache is not None:
+        return _credentials_cache
+    try:
+        if CREDENTIALS_PATH.exists():
+            with open(CREDENTIALS_PATH, "r", encoding="utf-8") as f:
+                _credentials_cache = json.load(f) or {}
+                return _credentials_cache
+    except Exception:
+        pass
+    _credentials_cache = {}
+    return _credentials_cache
+
+
+def get_feishu_credentials() -> tuple[str, str]:
+    """返回 (app_id, app_secret)。优先级：配置文件 > 环境变量 > 默认值。"""
+    cred = get_credentials().get("feishu", {})
+    app_id = cred.get("app_id") or os.environ.get("FEISHU_APP_ID", "cli_aa882f3b1abb5bb7")
+    app_secret = cred.get("app_secret") or os.environ.get("FEISHU_APP_SECRET", "")
+    return app_id, app_secret
+
+
+def get_smb_credentials() -> tuple[str, str]:
+    """返回 (user, password)。优先级：配置文件 > 环境变量 > 默认值。"""
+    cred = get_credentials().get("smb", {})
+    user = cred.get("user") or os.environ.get("SMB_USER", "dong_daqian")
+    password = cred.get("password") or os.environ.get("SMB_PASSWORD", "")
+    return user, password
+
+
+def get_dingtalk_webhook() -> str:
+    """返回钉钉 webhook。优先级：配置文件 > 环境变量。"""
+    cred = get_credentials().get("dingtalk", {})
+    return cred.get("webhook") or os.environ.get("DINGTALK_WEBHOOK", "")

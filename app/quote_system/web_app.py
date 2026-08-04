@@ -1828,18 +1828,21 @@ def _verify_4399_settled(year, month):
 @app.post("/api/settlement_4399/generate")
 def settlement_4399_generate() -> Response:
     sys.modules.pop('settlement.generate_settlement_4399', None)
-    from settlement.generate_settlement_4399 import generate_all
+    from settlement.generate_settlement_4399 import generate_all, get_exchange_rate
     data = request.get_json() or {}
     year = int(data.get("year", 0))
     month = int(data.get("month", 0))
     exchange_rate = float(data.get("exchange_rate", 0))
     validate_year_month(year, month)
     if exchange_rate <= 0:
-        from settlement.generate_settlement_4399 import get_exchange_rate
-        from datetime import datetime as _dt
-        exchange_rate = get_exchange_rate(_dt.now().year, _dt.now().month) or 0
+        exchange_rate = get_exchange_rate(year, month) or 0
     if exchange_rate <= 0:
         return jsonify({"status": "error", "message": "请输入有效汇率"}), 400
+
+    # 防重复结算：当月已有结算文件时拒绝（与工作台入口一致，防止已请款记录被重复结算）
+    output_dir = get_settlement_dir() / f"{year}年{month}月" / "4399"
+    if _check_settlement_exists(output_dir, "【"):
+        return jsonify({"status": "error", "message": f"{year}年{month}月 4399 已有结算文件，请先删除旧文件再重新生成（防止重复结算）"}), 409
 
     result = generate_all(year, month, exchange_rate)
     _mark_4399_settled(year, month)

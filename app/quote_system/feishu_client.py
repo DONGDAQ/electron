@@ -9,9 +9,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-# 飞书应用凭证
-APP_ID = os.getenv("FEISHU_APP_ID", "cli_aa882f3b1abb5bb7")
-APP_SECRET = os.getenv("FEISHU_APP_SECRET", "qnfvPU0Dx1GHhUQbxGodfd7ItIQ6JHGn")
+# 飞书应用凭证：优先读取 app/config/credentials.json（已 gitignore），其次环境变量，最后默认值
+from quote_system.config import get_feishu_credentials
+
+_FEISHU_APP_ID, _FEISHU_APP_SECRET = get_feishu_credentials()
+APP_ID = os.getenv("FEISHU_APP_ID", _FEISHU_APP_ID)
+APP_SECRET = os.getenv("FEISHU_APP_SECRET", _FEISHU_APP_SECRET)
 
 # 默认保留旧幻塔表，具体项目可单独指定 spreadsheet_token 和 sheet_id。
 SPREADSHEET_TOKEN = os.getenv("FEISHU_SPREADSHEET_TOKEN", "Z6vowfyZZi8DySk1ixncexdmnle")

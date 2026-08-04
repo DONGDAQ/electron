@@ -25,7 +25,8 @@ SCRIPT = str(ROOT / "auto_quote_scheduled.py")
 
 
 def _notify_dingtalk(title: str, text: str):
-    url = os.getenv("DINGTALK_WEBHOOK", "")
+    from quote_system.config import get_dingtalk_webhook
+    url = get_dingtalk_webhook()
     if not url:
         return
     body = json.dumps({
@@ -51,10 +52,14 @@ def _next_9am():
 
 
 def _ensure_smb():
+    from quote_system.config import get_smb_credentials
     share = r"\\192.168.110.111\【管理者专用】"
+    user, password = get_smb_credentials()
+    if not user or not password:
+        return
     try:
         subprocess.run(
-            ["net", "use", share, "/user:dong_daqian", "dq46460055"],
+            ["net", "use", share, f"/user:{user}", password],
             capture_output=True, text=True, timeout=10,
         )
     except Exception:
